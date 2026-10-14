@@ -15,6 +15,8 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -524,3 +526,26 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text, default="")
     updated_by: Mapped[str] = mapped_column(String(80), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class PipelineState(Base):
+    """작업(메일 · 'job-N')별 파이프라인 공유 상태 — 예전 work/pipeline_state/<키>.json.
+
+    단계마다 결과(OS 파일 경로, 버전, Dropbox 링크, 결재 상태…)를 쌓아 다음 단계가 읽는다.
+    PostgreSQL 에서는 JSONB 로 둬서 목록 화면이 파일 수십 개를 여는 대신 한 번에 읽는다.
+    """
+
+    __tablename__ = "pipeline_state"
+
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class PipelineStateAlias(Base):
+    """Submission/Approval 짝 — Approval 키의 상태는 Submission 키의 상태를 쓴다(예전 _alias.json)."""
+
+    __tablename__ = "pipeline_state_alias"
+
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    canonical: Mapped[str] = mapped_column(String(60))
