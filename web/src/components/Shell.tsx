@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api, useApi, type Home, type Me } from "@/lib/api";
 import { Icon } from "./Icons";
+import { ThemeCycle, ThemeSwitch } from "./ThemeToggle";
 import { cx } from "./ui";
 
 const NAV = [
@@ -34,13 +35,16 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[240px_1fr]">
       <aside className="sticky top-0 z-10 flex flex-col gap-1 bg-side px-3 py-4 text-side-text lg:h-screen">
-        <Link href="/" className="mb-3 flex items-center gap-2.5 px-2 text-white">
+        <div className="mb-3 flex items-center">
+        <Link href="/" className="flex flex-1 items-center gap-2.5 px-2 text-white">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[#5b8cff] to-[#2f6bff] text-[13px] font-extrabold">tw</span>
           <span>
             <span className="block text-[15px] font-bold leading-tight">TW Automation</span>
             <span className="block text-[11px] text-side-dim">OS 배포 · FOTA · 문서</span>
           </span>
         </Link>
+        <ThemeCycle className="text-side-dim hover:bg-side-active hover:text-white lg:hidden" />
+        </div>
         <nav className="flex flex-row flex-wrap gap-1 lg:flex-col">
           {NAV.map((n) => {
             const active = n.href === "/" ? path === "/" : path.startsWith(n.href) || (n.href === "/rounds" && path.startsWith("/jobs"));
@@ -57,6 +61,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="mt-auto hidden border-t border-side-active pt-3 lg:block">
+          <ThemeSwitch className="mb-2" />
           {me.data?.legacy_url && (
             <a href={me.data.legacy_url} target="_blank" rel="noreferrer" className="mb-2 block rounded-lg px-2.5 py-2 text-[12.5px] text-side-dim hover:bg-side-active hover:text-white">
               기존 화면(8080) 열기 ↗

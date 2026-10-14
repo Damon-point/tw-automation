@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { api } from "@/lib/api";
+import { ThemeCycle } from "@/components/ThemeToggle";
 
 function LoginForm() {
   const router = useRouter();
@@ -52,7 +53,8 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="grid min-h-screen place-items-center bg-[radial-gradient(1200px_600px_at_20%_-10%,#dbe6ff_0%,transparent_60%)]">
+    <div className="relative grid min-h-screen place-items-center bg-[radial-gradient(1200px_600px_at_20%_-10%,#dbe6ff_0%,transparent_60%)] dark:bg-[radial-gradient(1200px_600px_at_20%_-10%,#1b2742_0%,transparent_60%)]">
+      <ThemeCycle className="absolute right-4 top-4 text-ink-3 hover:bg-surface-2 hover:text-ink" />
       <Suspense>
         <LoginForm />
       </Suspense>

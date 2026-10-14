@@ -36,8 +36,10 @@
   --side-active: #1b2336;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+/* 테마 — <html data-theme="light|dark">. 없으면 시스템 설정을 따른다(사이드바 아래 전환, localStorage twn-theme) */
+:root { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
     --bg: #0e1117;
     --surface: #161a23;
     --surface-2: #1b2029;
@@ -57,6 +59,39 @@
     --muted-soft: #222835;
     --side: #0a0d14;
     --side-active: #161c2a;
+  
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1117;
+    --surface: #161a23;
+    --surface-2: #1b2029;
+    --line: #262c38;
+    --line-strong: #343c4b;
+    --text: #e8eaf0;
+    --text-2: #b3b9c7;
+    --text-3: #7d8494;
+    --brand: #5b8cff;
+    --brand-ink: #86a8ff;
+    --brand-soft: #1b2742;
+    --ok-soft: #12301f;
+    --warn: #fb923c;
+    --warn-soft: #3a2410;
+    --err-soft: #3b1717;
+    --info-soft: #1b2742;
+    --muted-soft: #222835;
+    --side: #0a0d14;
+    --side-active: #161c2a;
+  
+  }
+}
+
+/* dark: 도 같은 규칙을 따른다 */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) { @slot; }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *) { @slot; }
   }
 }
 
