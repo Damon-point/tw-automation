@@ -96,6 +96,9 @@ def start() -> None:
             res = B.redmine_poll_once()
             if not (res or {}).get("error"):
                 B.sb_tick_once()
+            from routers import issues as IR
+
+            IR.warm_stats()         # 바뀐 것이 없으면 판번호가 같아 바로 끝난다
 
         _loop("redmine_sb", B.REDMINE_POLL_SEC, 20, redmine)
 

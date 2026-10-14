@@ -442,17 +442,41 @@ def sb_reopen(doc_id: int, request: Request):
 
 # ── 통계 ──────────────────────────────────────────────────────────────────────
 
-_stats_cache: dict[bool, tuple[float, list]] = {}
-_STATS_TTL = 60.0
+_stats_cache: dict[bool, tuple[tuple, list]] = {}
 
 
 def _rows(include_excluded: bool, fresh: bool) -> list:
+    """통계용 이슈 묶음 — Redmine 데이터 판번호가 그대로면 직전 계산을 쓴다(한 번에 3초).
+
+    예전에는 60초마다 무조건 다시 셌다. 수집이 끝나면 runtime 이 미리 데워 둔다(warm_stats).
+    """
+    ver = _stats_version()
     hit = _stats_cache.get(include_excluded)
-    if hit and not fresh and time.monotonic() - hit[0] < _STATS_TTL:
+    if hit and not fresh and hit[0] == ver:
         return hit[1]
     rows = ST.collect(include_excluded=include_excluded)
-    _stats_cache[include_excluded] = (time.monotonic(), rows)
+    _stats_cache[include_excluded] = (ver, rows)
     return rows
+
+
+def _stats_version() -> tuple:
+    """통계가 바뀌었는지 — 이슈·이벤트 판번호에 더해, 수를 바꾸지 않고 바뀌는 것(제외 · 테스트 표시 ·
+    수집 시각)까지 본다. 제외 키워드를 고치면 excluded 만 바뀌기 때문이다."""
+    from sqlalchemy import func, select
+
+    from app.issuetrack.db import issuetrack_session
+    from app.issuetrack.models import Issue
+
+    with issuetrack_session() as db:
+        extra = db.execute(select(
+            func.count().filter(Issue.excluded.is_(True)), func.count().filter(Issue.is_test.is_(True)),
+            func.max(Issue.updated_on), func.max(Issue.synced_at))).one()
+    return tuple(it_sync.data_version()) + tuple(str(x) for x in extra)
+
+
+def warm_stats() -> None:
+    """Redmine 수집 직후 runtime 이 부른다 — 처음 통계를 여는 사람이 3초를 기다리지 않게."""
+    _rows(False, False)
 
 
 def _r1(v: float | None) -> float | None:

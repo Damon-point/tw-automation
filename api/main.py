@@ -215,8 +215,11 @@ def home(request: Request):
 
     # RN 결재 — 상태 파일의 요청됨 표시
     approvals = []
+    from app.pipeline.state import get_states
+
+    states = get_states([J.state_key(jid) for jid in jobs])     # 작업마다 따로 읽지 않고 한 번에
     for jid in jobs:
-        st = get_state(J.state_key(jid)) or {}
+        st = states.get(J.state_key(jid)) or {}
         for k, kind in (("rn_mid_review", "RN 승인(1차)"), ("rn_review", "최종 검수(2차)"), ("newsletter_review", "뉴스레터 결재")):
             v = st.get(k) or {}
             if isinstance(v, dict) and v.get("status") == "requested":

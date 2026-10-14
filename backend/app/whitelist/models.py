@@ -123,8 +123,9 @@ class WLRequest(WhitelistBase):
     deleted_by: Mapped[str] = mapped_column(String(120), default="")
     delete_reason: Mapped[str] = mapped_column(Text, default="")
 
+    # 넣은 순서대로 — PostgreSQL 은 정렬을 주지 않으면 순서를 보장하지 않는다(SQLite 는 대개 id 순이었다)
     devices: Mapped[list["WLDevice"]] = relationship(
-        back_populates="request", cascade="all, delete-orphan"
+        back_populates="request", cascade="all, delete-orphan", order_by="WLDevice.id"
     )
 
 

@@ -97,7 +97,24 @@ def looks_like_request(m: CachedMail) -> bool:
     return bool(_NEAR.search(text))
 
 
+_cand_cache: dict = {}
+
+
 def candidates(days: int = WINDOW_DAYS) -> list[CachedMail]:
+    """규칙에 걸린 후보 메일. 메일 판번호(건수·최대 id)가 그대로면 직전 결과를 쓴다 —
+    본문 전체를 훑는 검색이라(메일 5천 통 · 0.6초) 화면을 열 때마다 하지 않는다."""
+    from app.background import data_version
+
+    key = (data_version(), days, datetime.now().strftime("%Y-%m-%d"))   # 날짜가 바뀌면 창도 바뀐다
+    hit = _cand_cache.get("v")
+    if hit and hit[0] == key:
+        return list(hit[1])
+    out = _candidates(days)
+    _cand_cache["v"] = (key, out)
+    return list(out)
+
+
+def _candidates(days: int) -> list[CachedMail]:
     since = datetime.now() - timedelta(days=days)
     with get_session() as db:
         rows = (db.query(CachedMail)

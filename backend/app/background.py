@@ -102,9 +102,8 @@ def data_version() -> tuple[int, int]:
 
     try:
         with get_session() as db:
-            n = db.query(func.count(CachedMail.id)).scalar() or 0
-            mx = db.query(func.max(CachedMail.id)).scalar() or 0
-        return int(n), int(mx)
+            n, mx = db.query(func.count(CachedMail.id), func.max(CachedMail.id)).one()
+        return int(n or 0), int(mx or 0)
     except Exception:  # noqa: BLE001
         return (-1, -1)
 

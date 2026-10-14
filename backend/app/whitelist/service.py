@@ -394,7 +394,14 @@ def category_for_sender(sender: str) -> str:
 
 
 # ── 신청(Requests) ──────────────────────────────────────────
-def _req_to_dict(r: WLRequest) -> dict:
+def _dev_to_dict(d) -> dict:
+    return {"sn": d.sn, "api": d.android_api, "endDate": d.support_end_date,
+            "ostype": d.ostype, "model": d.model, "cur": d.cur_os, "upg": d.upg_os,
+            "partnumber": d.partnumber}
+
+
+def _req_to_dict(r: WLRequest, devices: list | None = None) -> dict:
+    """devices 를 주면 그것을 쓴다(목록에서 한 번에 읽은 것) — 안 주면 r.devices 를 읽는다."""
     return {
         "id": r.id, "userId": r.requester_email, "userName": r.requester_name,
         "username": r.requester_username, "team": r.team,
@@ -409,12 +416,7 @@ def _req_to_dict(r: WLRequest) -> dict:
         "freeReason": r.free_reason,
         "deletedAt": r.deleted_at.isoformat() if r.deleted_at else "",
         "deletedBy": r.deleted_by, "deleteReason": r.delete_reason,
-        "devices": [
-            {"sn": d.sn, "api": d.android_api, "endDate": d.support_end_date,
-             "ostype": d.ostype, "model": d.model, "cur": d.cur_os, "upg": d.upg_os,
-             "partnumber": d.partnumber}
-            for d in r.devices
-        ],
+        "devices": devices if devices is not None else [_dev_to_dict(d) for d in r.devices],
     }
 
 
@@ -871,9 +873,18 @@ def set_reply_status(req_id: str, status: str) -> None:
 
 
 def list_requests() -> list[dict]:
+    from sqlalchemy import select
+
+    # 단말은 요청마다 따로 읽지 않고(요청 154건 → 쿼리 155번) 필요한 칸만 한 번에 읽어 묶는다.
+    # ORM 객체로 만들면 단말 1만 개를 만드는 데만 0.45초가 든다(실측 2026-10-14).
     with whitelist_session() as db:
         rows = db.query(WLRequest).order_by(WLRequest.created_at.desc()).all()
-        return [_req_to_dict(r) for r in rows]
+        cols = (WLDevice.request_id, WLDevice.sn, WLDevice.android_api, WLDevice.support_end_date,
+                WLDevice.ostype, WLDevice.model, WLDevice.cur_os, WLDevice.upg_os, WLDevice.partnumber)
+        by_req: dict = {}
+        for d in db.execute(select(*cols).order_by(WLDevice.id)):
+            by_req.setdefault(d.request_id, []).append(_dev_to_dict(d))
+        return [_req_to_dict(r, by_req.get(r.id, [])) for r in rows]
 
 
 def delete_request(req_id: str, reason: str, admin_name: str) -> tuple[bool, str]:

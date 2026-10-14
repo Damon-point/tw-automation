@@ -1132,8 +1132,9 @@ def template(request: Request):
 
 # ── 등록 내역 ──────────────────────────────────────────────────────────────────
 
-def _filter_requests(q: str) -> list[dict]:
-    allr = [r for r in _S().list_requests() if r["status"] != "deleted"]
+def _filter_requests(q: str, allr: list[dict] | None = None) -> list[dict]:
+    if allr is None:
+        allr = [r for r in _S().list_requests() if r["status"] != "deleted"]
     k = q.strip().lower()
     if k:
         allr = [r for r in allr if k in (r["userName"] or "").lower() or k in r["id"].lower()
@@ -1148,8 +1149,9 @@ def requests_list(request: Request, q: str = "", limit: int = 200):
     from app.whitelist.db import whitelist_session
     from app.whitelist.models import WLRequest
 
-    total = len([r for r in _S().list_requests() if r["status"] != "deleted"])
-    rows = _filter_requests(q)
+    live = [r for r in _S().list_requests() if r["status"] != "deleted"]
+    total = len(live)
+    rows = _filter_requests(q, live)
     comps = PT.list_companies()
     cur = {}
     if comps:

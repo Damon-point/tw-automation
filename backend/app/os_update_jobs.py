@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+import contextvars
+import functools
 import json
 import re
 
@@ -233,6 +235,37 @@ def link_mail(job_id: int, side: str, mail_id: int) -> tuple[bool, str]:
     return True, f"{product} {version} 작업에 {side} 메일을 연결했습니다."
 
 
+# ── 한 번의 목록 계산 동안만 쓰는 메모 ───────────────────────────────────────────
+# open_rounds 는 제품(38개)마다 version_rows → detected_updates 를 부르는데, 그 안에서
+# '작업에 물린 메일 id'·'메일 판번호' 같은 **제품과 무관한 값**을 제품마다 다시 읽었다
+# (실측 2026-10-14: 쿼리 600번 · 1초). 계산 한 번 동안에는 그 값이 바뀌지 않으므로 한 번만 읽는다.
+# 메모는 그 계산이 끝나면 버린다 — 다음 요청은 늘 새 값을 본다.
+_memo_var: contextvars.ContextVar[dict | None] = contextvars.ContextVar("osu_memo", default=None)
+
+
+def _memo(key, build):
+    m = _memo_var.get()
+    if m is None:
+        return build()
+    if key not in m:
+        m[key] = build()
+    return m[key]
+
+
+def _batched(fn):
+    """이 함수가 도는 동안 _memo 를 켠다(이미 켜져 있으면 그대로 쓴다)."""
+    @functools.wraps(fn)
+    def run(*a, **kw):
+        if _memo_var.get() is not None:
+            return fn(*a, **kw)
+        tok = _memo_var.set({})
+        try:
+            return fn(*a, **kw)
+        finally:
+            _memo_var.reset(tok)
+    return run
+
+
 def _linked_ids(side: str) -> set:
     """이미 어느 작업엔가 물려 있는 트리거 메일 id.
 
@@ -242,6 +275,10 @@ def _linked_ids(side: str) -> set:
     로 되살아나 **이미 끝낸 회차를 또 만들라고** 올라왔다. 근거로 적어 둔 메일은
     그 작업이 안고 있는 것으로 본다.
     """
+    return set(_memo(("linked", side), lambda: _linked_ids_read(side)))
+
+
+def _linked_ids_read(side: str) -> set:
     col = _SIDE_COL[side]
     with get_session() as db:
         rows = db.query(getattr(OsUpdateJob, col), OsUpdateJob.basis_mails).all()
@@ -268,7 +305,7 @@ _mail_cache: dict = {}
 def _mail_ver() -> tuple:
     from app import background
 
-    return background.data_version()
+    return _memo("mail_ver", background.data_version)
 
 
 def _cached(key, build):
@@ -701,6 +738,7 @@ VERSION_COLORS = {NEW: "red-6", IDLE: "grey-6", PUBLISHED: "blue-grey-6",
                   RUNNING_: "orange-8", FINISHED: "green-8"}
 
 
+@_batched
 def version_rows(product: dict) -> list[dict]:
     """제품 하나의 **버전 목록 = 작업 목록**. 최신 버전이 위로.
 
@@ -745,7 +783,8 @@ def version_rows(product: dict) -> list[dict]:
     for v, date in RH.published(product["id"]).items():
         if mine(v):
             slot(v)["published_at"] = date
-    for j in list_jobs(product["id"]):
+    # 목록 계산 중이면 모든 작업을 한 번만 읽어 제품별로 나눈다(제품마다 쿼리 2번씩이던 것)
+    for j in [j for j in _memo("jobs_all", lambda: list_jobs(None)) if j["product_id"] == product["id"]]:
         slot(j["version"])["job"] = j
     for u in detected_updates(product):
         # 버전을 못 정한 회차는 빌드 값으로 자리를 만든다 — 조용히 사라지면 안 된다.
@@ -790,6 +829,7 @@ def version_rows(product: dict) -> list[dict]:
 OPEN_STATES = (NEW, RUNNING_)
 
 
+@_batched
 def open_rounds(q: str = "") -> list[dict]:
     """등록된 모든 제품을 통틀어 **아직 끝나지 않은 회차**를 평평하게 모은다.
 
@@ -889,9 +929,17 @@ def job_progress(job_id: int) -> tuple[int, int]:
     """작업 전체(두 갈래 합)의 (완료 단계 수, 전체 단계 수)."""
     from app.stages import SIDE_APPROVAL, SIDE_SUBMISSION
 
+    with get_session() as db:
+        rows = db.query(OsUpdateJobStage.side, OsUpdateJobStage.stage_key, OsUpdateJobStage.status) \
+            .filter_by(job_id=job_id).all()
     done = total = 0
     for side in (SIDE_SUBMISSION, SIDE_APPROVAL):
-        d, t = side_progress(job_id, side)
+        keys = stage_keys_for(side)
+        have = {k: s for sd, k, s in rows if sd == side}
+        if any(k not in have for k in keys):          # 아직 만들지 않은 단계가 있으면 예전 길로(만들어 준다)
+            d, t = side_progress(job_id, side)
+        else:
+            d, t = sum(1 for k in keys if have[k] == DONE), len(keys)
         done += d
         total += t
     return done, total
