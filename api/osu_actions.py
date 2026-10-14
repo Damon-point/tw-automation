@@ -87,38 +87,146 @@ def run_stage(job_id: int, stage_id: int, user: dict) -> dict:
     return _start(job_id, stage_id, user)
 
 
-def _start(job_id: int, stage_id: int, user: dict) -> dict:
-    me = user["username"]
+def _claim(job_id: int, stage_id: int, user: dict):
     store, st = _store_and_stage(job_id, stage_id)
-    ok, why = store.claim(stage_id, me)
+    ok, why = store.claim(stage_id, user["username"])
     if not ok:
         raise ActionError(why)
-    job = J.get(job_id) or {}
-    pk = progress_key(store, stage_id)
     _reset_review_state(store.key, st.stage_key)
+    return store, st
 
-    def work():
-        try:
-            out = execute_stage(st.stage_key, _subject(job), user["id"], st.input_params or "",
-                                store.key, "", pk, st.side)
-            if out.cancelled:
-                store.set_status(stage_id, PENDING, me)
-            else:
-                store.save_result(stage_id, out.result_text, out.artifact_type, out.artifact_path, me)
-                if out.auto_done:
-                    store.set_status(stage_id, DONE, me)
-        except Exception as e:  # noqa: BLE001  기존 보드는 여기서 '실행 중' 으로 굳었다 — 결과로 남긴다
-            store.save_result(stage_id, f"✘ 실행 중 오류: {type(e).__name__}: {e}", "", "", me)
-        finally:
-            progress.clear(pk)
-            with _lock:
-                _running.pop(stage_id, None)
 
-    t = threading.Thread(target=work, name=f"stage-{stage_id}", daemon=True)
+def _execute(job_id: int, store, st, user: dict) -> None:
+    """이미 '실행 중' 으로 잡은 단계를 지금 스레드에서 돌린다. 어떤 실패도 결과로 남긴다."""
+    me = user["username"]
+    stage_id = st.id
+    pk = progress_key(store, stage_id)
+    job = J.get(job_id) or {}
+    try:
+        out = execute_stage(st.stage_key, _subject(job), user["id"], st.input_params or "",
+                            store.key, "", pk, st.side)
+        if out.cancelled:
+            store.set_status(stage_id, PENDING, me)
+        else:
+            store.save_result(stage_id, out.result_text, out.artifact_type, out.artifact_path, me)
+            if out.auto_done:
+                store.set_status(stage_id, DONE, me)
+    except Exception as e:  # noqa: BLE001  기존 보드는 여기서 '실행 중' 으로 굳었다 — 결과로 남긴다
+        store.save_result(stage_id, f"✘ 실행 중 오류: {type(e).__name__}: {e}", "", "", me)
+    finally:
+        progress.clear(pk)
+        with _lock:
+            _running.pop(stage_id, None)
+
+
+def _start(job_id: int, stage_id: int, user: dict) -> dict:
+    store, st = _claim(job_id, stage_id, user)
+    t = threading.Thread(target=_execute, args=(job_id, store, st, user), name=f"stage-{stage_id}", daemon=True)
     with _lock:
         _running[stage_id] = t
     t.start()
     return {"ok": True, "stage_id": stage_id, "message": f"'{S.stage_label(st.stage_key, st.side)}' 실행을 시작했습니다"}
+
+
+# ── 갈래 한꺼번에: 전체 실행 · 전체 완료 · 전체 대기로 ───────────────────────────────
+
+_run_all: dict[tuple[int, str], dict] = {}     # (job, side) → {by, started_at, ran, stopped}
+
+
+def run_all(job_id: int, side: str, user: dict) -> dict:
+    """Approval 전용 — 남은 단계를 차례로 **실행만** 한다(기존 '전체 실행').
+
+    각 단계는 끝나면 검수 대기로 남는다. 검수 대기 · 실패 · 중단을 만나면 그 자리에서 멈춘다.
+    """
+    if side != S.SIDE_APPROVAL:
+        raise ActionError("전체 실행은 Approval 갈래에만 있습니다")
+    store = JobStageStore(job_id)
+    store.stages(side)
+    nxt = store.next_pending(side)
+    if nxt is None:
+        raise ActionError("모든 단계가 완료되었습니다")
+    if nxt.status in (REVIEW, RUNNING):
+        raise ActionError(f"'{S.stage_label(nxt.stage_key, side)}' 이(가) "
+                          f"{'검수 대기' if nxt.status == REVIEW else '실행 중'}입니다")
+    with _lock:
+        cur = _run_all.get((job_id, side))
+        if cur and not cur.get("stopped"):
+            raise ActionError("이미 전체 실행 중입니다")
+        info = {"by": user["username"], "started_at": datetime.now().isoformat(timespec="seconds"),
+                "ran": 0, "stopped": "", "current": ""}
+        _run_all[(job_id, side)] = info
+    first_store, first = _claim(job_id, nxt.id, user)     # 첫 단계는 지금 잡아서, 다른 사람과 겹치면 바로 알린다
+
+    def loop() -> None:
+        store_, st = first_store, first
+        try:
+            while True:
+                info["current"] = S.stage_label(st.stage_key, side)
+                with _lock:
+                    _running[st.id] = threading.current_thread()
+                _execute(job_id, store_, st, user)
+                info["ran"] += 1
+                after = store_.get(st.id)
+                if after is None or after.status == PENDING:
+                    info["stopped"] = f"'{info['current']}' 에서 중단됨"
+                    return
+                if after.status == REVIEW and summarize_failed(after.result_text):
+                    info["stopped"] = f"'{info['current']}' 실패"
+                    return
+                n2 = store_.next_pending(side)
+                if n2 is None:
+                    info["stopped"] = "끝까지 실행함"
+                    return
+                if n2.status in (REVIEW, RUNNING):
+                    info["stopped"] = f"'{S.stage_label(n2.stage_key, side)}' 검수 대기에서 멈춤"
+                    return
+                store_, st = _claim(job_id, n2.id, user)
+        except ActionError as e:
+            info["stopped"] = str(e)
+        except Exception as e:  # noqa: BLE001
+            info["stopped"] = f"{type(e).__name__}: {e}"
+        finally:
+            info["current"] = ""
+            if not info["stopped"]:
+                info["stopped"] = "멈춤"
+
+    threading.Thread(target=loop, name=f"runall-{job_id}-{side}", daemon=True).start()
+    return {"ok": True, "message": "남은 단계를 차례로 실행합니다 — 검수 대기를 만나면 멈춥니다"}
+
+
+def summarize_failed(text: str) -> bool:
+    return any(ln.lstrip().startswith("✘") for ln in (text or "").splitlines())
+
+
+def run_all_state(job_id: int) -> dict:
+    return {side: dict(v) for (j, side), v in _run_all.items() if j == job_id}
+
+
+def bulk_status(job_id: int, side: str, status: str, user: dict) -> dict:
+    """이 갈래의 모든 단계를 한 번에 완료 / 대기로(기존 '처리 완료' · '전체 대기로 초기화').
+
+    실제 실행 없이 이력 회차를 마감하거나 처음부터 다시 할 때 쓴다. 실행 중인 단계가 있으면 하지 않는다.
+    대기로 되돌릴 때는 단계별 결재 상태도 같이 지운다(재실행과 같은 규칙).
+    """
+    if status not in (DONE, PENDING):
+        raise ActionError("완료 또는 대기로만 바꿀 수 있습니다")
+    if side not in (S.SIDE_SUBMISSION, S.SIDE_APPROVAL):
+        raise ActionError("모르는 갈래")
+    store = JobStageStore(job_id)
+    rows = store.stages(side)
+    busy = [r for r in rows if r.status == RUNNING]
+    if busy:
+        raise ActionError(f"'{S.stage_label(busy[0].stage_key, side)}' 이(가) 실행 중입니다")
+    me = user["username"]
+    n = 0
+    for r in rows:
+        if r.status != status:
+            store.set_status(r.id, status, me)
+            n += 1
+        if status == PENDING:
+            _reset_review_state(store.key, r.stage_key)
+    label = "완료" if status == DONE else "대기"
+    return {"ok": True, "changed": n, "message": f"{n}개 단계를 '{label}' 로 바꿨습니다" if n else f"이미 모두 '{label}' 입니다"}
 
 
 def cancel(job_id: int, stage_id: int) -> dict:
@@ -364,10 +472,69 @@ def selection(job_id: int) -> dict:
         # 결재가 요청됐거나 2차가 끝났으면 잠근다
         "locked": mid == "requested" or fin in ("requested", "approved"),
         "exclude_notes": list(EXCLUDE_NOTES),
+        "inputs": _input_fields(st),
     }
 
 
-def save_selection(job_id: int, rows: list[dict], user: dict) -> dict:
+def _input_fields(st: dict) -> dict:
+    """입력 값 칸(GMS/SDK/Audio/Touch/Wi-Fi/보안패치…) — 기존 선별표 팝업의 render_input_fields 와 같은 목록.
+
+    최초 릴리즈면 참고할 이전 RN 이 없어 항목을 빼고 더할 수 있다(editable).
+    version 은 문서에서 그 항목 위에 찍히는 판(◼) — 문서 생성과 같은 함수로 계산한다.
+    """
+    from app.pages.mid_review import _TOP_LEVEL_KEYS, input_fields_for
+    from app.pipeline.rn_research import component_version
+
+    comps = st.get("rn_components") or {}
+    src = st.get("rn_component_src") or {}
+    base = st.get("rn_component_vers") or {}
+    now = str(st.get("version_full") or st.get("release_version") or st.get("os_version") or "")
+    fields = []
+    for label, key, _multi, req in input_fields_for(st):
+        val = str((st.get(key) if key in _TOP_LEVEL_KEYS else comps.get(key)) or "")
+        manual = (st.get(f"{key}_src") if key in _TOP_LEVEL_KEYS else src.get(key)) == "manual"
+        fields.append({"key": key, "label": label, "required": bool(req), "value": val, "manual": manual,
+                       "version": (component_version(base, key, val, now).get("version") or now) if val.strip() else ""})
+    return {"fields": fields, "editable": bool(st.get("rn_first_release")), "now_version": now}
+
+
+def _apply_inputs(key: str, st: dict, inputs: list[dict]) -> None:
+    """입력 값 저장 — 기존 _collect 와 같은 순서: 바뀐 칸만 '수동' 표시 → rn_components · 최상위 값 → (최초 릴리즈면) 항목 목록."""
+    from app.pages.mid_review import _TOP_LEVEL_KEYS, strip_section_no
+    from app.pipeline import rn_lookup as RNL
+    from app.pipeline.rn_research import mark_manual_components
+
+    comps = st.get("rn_components") or {}
+    editable = bool(st.get("rn_first_release"))
+    base_keys = {f["key"] for f in _input_fields(st)["fields"]}
+    live, used = [], set()
+    for f in inputs:
+        k = str(f.get("key") or "").strip()
+        label = strip_section_no(str(f.get("label") or ""))
+        if not k:                                   # 새로 더한 항목 — 키를 이름에서 만든다
+            if not editable or not label:
+                continue
+            k = RNL.section_key(label) or "extra"
+            b, n = k, 2
+            while k in used or k in base_keys:
+                k, n = f"{b}_{n}", n + 1
+        elif k not in base_keys:
+            continue
+        used.add(k)
+        live.append({"key": k, "label": label or k, "value": str(f.get("value") or "").strip()})
+    dropped = (base_keys - used) if editable else set()
+    vals = {f["key"]: f["value"] for f in live}
+    comp_vals = {k: v for k, v in vals.items() if k not in _TOP_LEVEL_KEYS}
+    top_vals = {k: v for k, v in vals.items() if k in _TOP_LEVEL_KEYS}
+    merged = {k: v for k, v in {**comps, **comp_vals}.items() if k not in dropped}
+    mark_manual_components(key, merged, top_vals)
+    update_state(key, rn_components=merged, **top_vals)
+    if editable:
+        update_state(key, rn_input_fields=[{"key": f["key"], "label": f["label"], "value": f["value"],
+                                            "multiline": "\n" in f["value"]} for f in live])
+
+
+def save_selection(job_id: int, rows: list[dict], user: dict, inputs: list[dict] | None = None) -> dict:
     """반영/미반영 · 수정 내용 · 직접 추가한 행을 저장하고 RN 을 다시 만든다(기존 '저장 · RN 재생성')."""
     from app.pipeline.rn_research import korean_lines, rebuild_revision_from_selection, regenerate_rn
     from app.pipeline.rn_select import normalize_rows
@@ -390,6 +557,8 @@ def save_selection(job_id: int, rows: list[dict], user: dict) -> dict:
             r2["include"] = "Y" if str(r2.get("include")) == "Y" else "X"
         new_rows.append(r2)
     new_rows = normalize_rows(new_rows)
+    if inputs is not None:
+        _apply_inputs(key, get_state(key) or {}, inputs)
     update_state(key, rn_select_rows=new_rows, rn_select_edited_at=datetime.now().isoformat(),
                  rn_select_edited_by=user["username"])
     lines, note = rebuild_revision_from_selection(key)
@@ -397,7 +566,7 @@ def save_selection(job_id: int, rows: list[dict], user: dict) -> dict:
         lines = list((get_state(key) or {}).get("rn_revision_lines") or [])
     regenerate_rn(key, "\n".join(f"- {ln}" for ln in lines), with_full=info["with_full"], with_sales=True)
     H.record(key, "rn", "선별표·입력값 수정", actor=user["username"],
-             summary="반영 항목·수정 내용 수정 후 재생성", text=H.text_from_rn(get_state(key) or {}))
+             summary="반영 항목·수정 내용·입력값 수정 후 재생성", text=H.text_from_rn(get_state(key) or {}))
     ko = korean_lines(lines)
     return {"ok": True, "lines": len(lines), "korean": ko[:5],
             "message": "저장하고 RN 을 다시 만들었습니다" + (f" — 한국어 줄 {len(ko)}개" if ko else "")}

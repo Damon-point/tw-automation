@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icons";
 import { Card, Progress, ResultSummary, StatusChip, Tag, cx } from "@/components/ui";
 import { ago } from "@/lib/api";
@@ -26,10 +26,14 @@ export function Lane({ side, ctx }: { side: SideX; ctx: Ctx }) {
         </span>
         <span>{sub ? "준비 — 외부에 쓰지 않음" : "실제 업로드 · 발송"}</span>
       </span>}
-      right={<div className="flex w-[150px] items-center gap-2">
-        <span className="whitespace-nowrap text-[12px] text-ink-3">{side.done}/{side.total}</span>
-        <Progress done={side.done} total={side.total} />
+      right={<div className="flex items-center gap-2">
+        <div className="flex w-[150px] items-center gap-2">
+          <span className="whitespace-nowrap text-[12px] text-ink-3">{side.done}/{side.total}</span>
+          <Progress done={side.done} total={side.total} />
+        </div>
+        <LaneMenu side={side} ctx={ctx} />
       </div>}>
+      <RunAllNote side={side} ctx={ctx} />
       <NextAction side={side} ctx={ctx} />
       <ol>
         {side.stages.map((s, i) => (
@@ -37,6 +41,108 @@ export function Lane({ side, ctx }: { side: SideX; ctx: Ctx }) {
         ))}
       </ol>
     </Card>
+  );
+}
+
+// ── 갈래 한꺼번에: 전체 실행 · 전체 완료 · 전체 대기로 ─────────────────────────────
+
+type Bulk = "run_all" | "done" | "pending";
+const BULK: Record<Bulk, { title: string; body: string; ok: string; kind: "primary" | "ok" | "danger" }> = {
+  run_all: { title: "남은 단계 전체 실행", ok: "전체 실행", kind: "primary",
+    body: "남은 단계를 차례로 실행합니다. 각 단계는 끝나면 검수 대기로 남고, 검수 대기 · 실패 · 중단을 만나면 거기서 멈춥니다." },
+  done: { title: "모든 단계를 완료로", ok: "전체 완료", kind: "ok",
+    body: "실제로 실행하지 않고 이 갈래의 모든 단계를 완료로 표시합니다. 대체된 회차처럼 이력만 마감할 때 씁니다." },
+  pending: { title: "모든 단계를 대기로", ok: "전체 대기로 초기화", kind: "danger",
+    body: "이 갈래의 모든 단계를 대기로 되돌리고, 단계에 걸린 결재 상태(RN 승인 · 최종 검수 · 뉴스레터)도 지웁니다. 만든 파일은 그대로 남습니다." },
+};
+
+function LaneMenu({ side, ctx }: { side: SideX; ctx: Ctx }) {
+  const [open, setOpen] = useState(false);
+  const [ask, setAsk] = useState<Bulk | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const api = jobApi(ctx.job.job.id);
+  const { busy, run } = useAction(ctx.reload);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  const running = side.stages.some((s) => s.status === "running");
+  const next = side.stages.find((s) => s.key === side.next);
+  const ra = ctx.job.run_all?.[side.side];
+  const raActive = !!ra && !ra.stopped;
+  const items: { k: Bulk; label: string; icon: string; off: string }[] = [
+    ...(side.side === APP ? [{ k: "run_all" as Bulk, label: "전체 실행", icon: "play",
+      off: raActive ? "전체 실행 중" : running ? "실행 중인 단계가 있음" : !next ? "남은 단계 없음" : next.status !== "pending" ? `${next.label} 검수 대기` : "" }] : []),
+    { k: "done", label: "전체 완료", icon: "check", off: running || raActive ? "실행 중인 단계가 있음" : side.done === side.total ? "이미 모두 완료" : "" },
+    { k: "pending", label: "전체 대기로 초기화", icon: "rounds", off: running || raActive ? "실행 중인 단계가 있음" : side.stages.every((s) => s.status === "pending") ? "이미 모두 대기" : "" },
+  ];
+
+  async function go(k: Bulk) {
+    const r = await run(k, () => (k === "run_all" ? api.runAll(side.side) : api.bulkStatus(side.side, k)));
+    if (r !== undefined) setAsk(null);
+  }
+
+  return (
+    <div ref={box} className="relative">
+      <button onClick={() => setOpen((v) => !v)} aria-label="갈래 전체 동작" aria-expanded={open}
+              className="grid h-8 w-8 place-items-center rounded-lg text-[18px] leading-none text-ink-3 hover:bg-surface-2 hover:text-ink">⋯</button>
+      {open && (
+        <div className="absolute right-0 top-9 z-30 w-[230px] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+          {items.map((it) => (
+            <button key={it.k} disabled={!!it.off} onClick={() => { setOpen(false); setAsk(it.k); }}
+                    className={cx("flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50",
+                      it.k === "pending" && "text-err")}>
+              <Icon name={it.icon} className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                <span className="block text-[13.5px] font-semibold">{it.label}</span>
+                {it.off && <span className="block text-[11.5px] text-ink-3">{it.off}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      <Modal open={!!ask} onClose={() => setAsk(null)} title={ask ? `${side.side === APP ? "Approval" : "Submission"} — ${BULK[ask].title}` : ""}
+             footer={ask && <>
+               <Btn kind="outline" onClick={() => setAsk(null)}>취소</Btn>
+               <Btn kind={BULK[ask].kind} busy={busy === ask} onClick={() => go(ask)}>{BULK[ask].ok}</Btn>
+             </>}>
+        {ask && (
+          <div className="space-y-3">
+            <p className="text-ink-2">{BULK[ask].body}</p>
+            {ask !== "run_all" && (
+              <ul className="max-h-[260px] overflow-auto rounded-lg border border-line text-[13px]">
+                {side.stages.map((s) => (
+                  <li key={s.key} className="flex items-center gap-2 border-b border-line px-3 py-1.5 last:border-b-0">
+                    <span className="flex-1">{s.label}</span>
+                    <StatusChip status={s.status} />
+                    <span className="text-ink-3">→</span>
+                    <StatusChip status={ask} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+function RunAllNote({ side, ctx }: { side: SideX; ctx: Ctx }) {
+  const ra = ctx.job.run_all?.[side.side];
+  if (!ra) return null;
+  const active = !ra.stopped;
+  return (
+    <div className={cx("mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-[12.5px]",
+      active ? "bg-info-soft text-info" : "bg-surface-2 text-ink-2")}>
+      {active && <span className="h-2 w-2 rounded-full bg-info pulse-dot" />}
+      <b>전체 실행</b>
+      <span>{active ? `${ra.current || "다음 단계"} 실행 중 · ${ra.ran}개 끝남` : `${ra.ran}개 실행 — ${ra.stopped}`}</span>
+      <span className="ml-auto text-ink-3">{ra.by} · {ago(ra.started_at)}</span>
+    </div>
   );
 }
 

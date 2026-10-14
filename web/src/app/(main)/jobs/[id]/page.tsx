@@ -29,7 +29,8 @@ export default function JobPage() {
   return <ToastHost><JobView /></ToastHost>;
 }
 
-const isRunning = (d: JobX | null) => !!d?.sides.some((s) => s.stages.some((x) => x.status === "running"));
+const isRunning = (d: JobX | null) => !!d?.sides.some((s) => s.stages.some((x) => x.status === "running"))
+  || Object.values(d?.run_all ?? {}).some((r) => !r.stopped);
 
 function JobView() {
   const { id } = useParams<{ id: string }>();

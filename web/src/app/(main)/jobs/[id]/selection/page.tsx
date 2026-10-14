@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icons";
 import { Empty, Skeleton, Tag, cx } from "@/components/ui";
+import InputFields, { type LiveField } from "@/components/job/InputFields";
 import { Btn, ToastHost, inputCls, useToast } from "@/components/job/kit";
 import { ago, useApi } from "@/lib/api";
 import { jobApi, type SelRow, type Selection } from "@/lib/job";
@@ -41,17 +42,27 @@ function SelectionEditor() {
   const [q, setQ] = useState("");
   const [saving, setSaving] = useState(false);
   const [openReason, setOpenReason] = useState<string>("");
+  const [fields, setFields] = useState<LiveField[]>([]);
+  const [origF, setOrigF] = useState<Record<string, string>>({});
+
+  function resetFields(d: Selection) {
+    const fs = d.inputs.fields.map((f) => ({ ...f, uid: f.key }));
+    setFields(fs);
+    setOrigF(Object.fromEntries(fs.map((f) => [f.uid, f.value])));
+  }
 
   useEffect(() => {
     if (!data) return;
     setRows(data.rows.map((r) => ({ ...r })));
     setOrig(Object.fromEntries(data.rows.map((r) => [String(r.no), `${r.include}|${r.apply_note}`])));
+    resetFields(data);
   }, [data]);
 
   const locked = !!data?.locked;
   const sig = (r: SelRow) => `${r.include}|${r.apply_note}`;
   const changed = (r: SelRow) => r.manual ? !!r.apply_note.trim() && orig[String(r.no)] !== sig(r) : orig[String(r.no)] !== sig(r);
-  const dirty = rows.some(changed) || rows.length !== (data?.rows.length ?? 0);
+  const fieldsDirty = fields.length !== Object.keys(origF).length || fields.some((f) => origF[f.uid] !== f.value);
+  const dirty = rows.some(changed) || rows.length !== (data?.rows.length ?? 0) || fieldsDirty;
   const nY = rows.filter((r) => r.include === "Y").length;
 
   useEffect(() => {
@@ -96,7 +107,7 @@ function SelectionEditor() {
   async function save() {
     setSaving(true);
     try {
-      const r = await api.saveSelection(rows);
+      const r = await api.saveSelection(rows, fields.map((f) => ({ key: f.key, label: f.label, value: f.value })));
       toast({ tone: "ok", text: r.message ?? "저장했습니다", notes: r.korean?.length ? ["한국어가 남은 줄: " + r.korean.join(" / ")] : undefined });
       reload();
     } catch (e) {
@@ -122,7 +133,7 @@ function SelectionEditor() {
         <div>
           <h1 className="text-[22px] font-bold tracking-tight">Release Note 선별표</h1>
           <p className="mt-1 text-[13px] text-ink-2">
-            반영한 항목의 <b>수정 내용</b>이 그대로 RN 문구가 됩니다.
+            반영한 항목의 <b>수정 내용</b>이 그대로 RN 문구가 되고, <b>입력 값</b>은 RN 의 각 항목 칸에 들어갑니다.
             {data.edited_by && <span className="text-ink-3"> · 마지막 저장 {data.edited_by} {ago(data.edited_at)}</span>}
           </p>
         </div>
@@ -142,6 +153,9 @@ function SelectionEditor() {
           1차 승인이 끝나 저장하면 RN for Sales 만 다시 만듭니다. 전체 이력본은 확정본 그대로입니다.
         </div>
       )}
+
+      <InputFields fields={fields} orig={origF} editable={data.inputs.editable} nowVersion={data.inputs.now_version}
+                   locked={locked} onChange={setFields} />
 
       <div className="sticky top-0 z-20 -mx-1 mb-3 flex flex-wrap items-center gap-2 bg-bg/95 px-1 py-2 backdrop-blur">
         <div className="flex rounded-lg border border-line bg-surface p-0.5">
@@ -228,9 +242,9 @@ function SelectionEditor() {
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur lg:left-[240px]">
           <div className="mx-auto flex max-w-[1280px] items-center gap-3 px-4 py-3 lg:px-8">
             <span className="text-[13px] text-ink-2">반영 <b className="text-ink">{nY}</b> · 미반영 {rows.length - nY}</span>
-            {dirty ? <Tag tone="warn">저장 안 한 변경 {rows.filter(changed).length}건</Tag> : <span className="text-[12.5px] text-ink-3">변경 없음</span>}
+            {dirty ? <Tag tone="warn">저장 안 한 변경 {rows.filter(changed).length + fields.filter((f) => origF[f.uid] !== f.value).length}건</Tag> : <span className="text-[12.5px] text-ink-3">변경 없음</span>}
             <span className="flex-1" />
-            {dirty && <Btn kind="ghost" onClick={() => data && setRows(data.rows.map((r) => ({ ...r })))}>되돌리기</Btn>}
+            {dirty && <Btn kind="ghost" onClick={() => { if (data) { setRows(data.rows.map((r) => ({ ...r }))); resetFields(data); } }}>되돌리기</Btn>}
             <Btn kind="primary" busy={saving} disabled={!dirty} onClick={save}>저장하고 RN 다시 만들기</Btn>
           </div>
         </div>

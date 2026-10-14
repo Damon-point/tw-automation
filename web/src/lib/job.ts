@@ -17,6 +17,7 @@ export type JobX = Omit<JobDetail, "sides"> & {
   reviews: Record<ReviewKind, ReviewState>;
   progress: Record<string, ProgressInfo>;
   can_decide: Record<ReviewKind, boolean>;
+  run_all: Record<string, RunAllState>;
 };
 
 export type ActResult = { ok?: boolean; message?: string; notes?: string[] };
@@ -37,7 +38,11 @@ export type SelRow = {
 export type Selection = {
   rows: SelRow[]; edited_at: string; edited_by: string; mid: string; final: string;
   with_full: boolean; locked: boolean; exclude_notes: string[];
+  inputs: { fields: InputField[]; editable: boolean; now_version: string };
 };
+/** 선별표의 입력 값 칸 — key 가 빈 것은 최초 릴리즈에서 새로 더한 항목 */
+export type InputField = { key: string; label: string; required: boolean; value: string; manual: boolean; version: string };
+export type RunAllState = { by: string; started_at: string; ran: number; stopped: string; current: string };
 
 export type Inputs = {
   os_version: { value: string; inherited: string; editable: boolean };
@@ -135,7 +140,10 @@ export const jobApi = (id: number | string) => ({
   upload: (stage_id: number) => post<UploadOut>(`/api/jobs/${id}/upload`, { stage_id }),
   setState: (key: string, value: string) => post(`/api/jobs/${id}/state`, { key, value }),
   selection: () => api<Selection>(`/api/jobs/${id}/selection`),
-  saveSelection: (rows: SelRow[]) => post<ActResult & { lines: number; korean: string[] }>(`/api/jobs/${id}/selection`, { rows }),
+  saveSelection: (rows: SelRow[], inputs?: { key: string; label: string; value: string }[]) =>
+    post<ActResult & { lines: number; korean: string[] }>(`/api/jobs/${id}/selection`, { rows, inputs }),
+  runAll: (side: string) => post(`/api/jobs/${id}/run-all`, { side }),
+  bulkStatus: (side: string, status: "done" | "pending") => post<ActResult & { changed: number }>(`/api/jobs/${id}/bulk-status`, { side, status }),
   excludeNote: (no: string | number, value: string) => post(`/api/jobs/${id}/exclude-note`, { no: String(no), value }),
   reviewRequest: (kind: ReviewKind) => post(`/api/jobs/${id}/reviews/${kind}/request`),
   reviewDecide: (kind: ReviewKind, approve: boolean, note: string) =>

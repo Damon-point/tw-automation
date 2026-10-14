@@ -356,7 +356,7 @@ def job_detail(job_id: int, request: Request):
                 "os_type": j.get("os_type", ""), "version": j.get("version", ""), "created_by": j.get("created_by", ""),
                 "created_at": _iso(j.get("created_at"))},
         "sides": sides, "facts": facts, "uploads": uploads, "rn": rn, "artifacts": artifacts, "basis": basis,
-        "reviews": R.state_of(job_id), "progress": A.progress_of(job_id),
+        "reviews": R.state_of(job_id), "progress": A.progress_of(job_id), "run_all": A.run_all_state(job_id),
         "can_decide": {k: R.can_decide(k, request.session.get("user") or {}) for k in R.KINDS},
         "legacy": {"osupdate": f"{LEGACY_URL}/osupdate", "newtasks": f"{LEGACY_URL}/newtasks",
                    "reviews": f"{LEGACY_URL}/reviews", "final_reviews": f"{LEGACY_URL}/final-reviews"},
@@ -385,6 +385,7 @@ class StateValueIn(BaseModel):
 
 class SelectionIn(BaseModel):
     rows: list[dict]
+    inputs: list[dict] | None = None     # 입력 값 칸 [{key,label,value}] — 최초 릴리즈면 key 없는 새 항목도
 
 
 class NoteIn(BaseModel):
@@ -407,6 +408,21 @@ def _act(fn, *a):
 @app.post("/api/jobs/{job_id}/run-next")
 def act_run_next(job_id: int, body: SideIn, request: Request):
     return _act(A.run_next, job_id, body.side, _user(request))
+
+
+class BulkIn(BaseModel):
+    side: str
+    status: str           # done | pending
+
+
+@app.post("/api/jobs/{job_id}/run-all")
+def act_run_all(job_id: int, body: SideIn, request: Request):
+    return _act(A.run_all, job_id, body.side, _user(request))
+
+
+@app.post("/api/jobs/{job_id}/bulk-status")
+def act_bulk_status(job_id: int, body: BulkIn, request: Request):
+    return _act(A.bulk_status, job_id, body.side, body.status, _user(request))
 
 
 @app.post("/api/jobs/{job_id}/run")
@@ -483,7 +499,7 @@ def act_selection(job_id: int, request: Request):
 
 @app.post("/api/jobs/{job_id}/selection")
 def act_save_selection(job_id: int, body: SelectionIn, request: Request):
-    return _act(A.save_selection, job_id, body.rows, _user(request))
+    return _act(A.save_selection, job_id, body.rows, _user(request), body.inputs)
 
 
 @app.post("/api/jobs/{job_id}/exclude-note")
