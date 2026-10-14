@@ -225,11 +225,18 @@ def home(request: Request):
 
     rounds = J.open_rounds("")
     new_rounds = [r for r in rounds if r.get("state") == "new"]
+    try:
+        import license_inbox
+
+        lic_new = license_inbox.open_count()
+    except Exception:  # noqa: BLE001
+        lic_new = 0
     key = lambda x: x.get("updated_at", "")  # noqa: E731
     return {
         "user": u,
         "counts": {"review": len(review), "failed": len(failed), "running": len(running),
-                   "approvals": len(approvals), "new_rounds": len(new_rounds)},
+                   "approvals": len(approvals), "new_rounds": len(new_rounds),
+                   "license_mail": lic_new},
         "review": sorted(review, key=key, reverse=True)[:30],
         "failed": sorted(failed, key=key, reverse=True)[:30],
         "running": running,

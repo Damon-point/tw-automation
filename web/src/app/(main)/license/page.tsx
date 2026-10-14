@@ -5,6 +5,7 @@ import { Icon } from "@/components/Icons";
 import { Card, Empty, PageHead, Skeleton, cx } from "@/components/ui";
 import Detail from "@/components/license/Detail";
 import { Btn, LicStatusChip } from "@/components/license/LicBits";
+import MailInbox from "@/components/license/MailInbox";
 import NewRequest from "@/components/license/NewRequest";
 import { useApi } from "@/lib/api";
 import { qty, type LicOverview } from "@/lib/license";
@@ -18,6 +19,8 @@ export default function LicensePage() {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [mailFor, setMailFor] = useState<number | null>(null);   // 메일에서 시작한 신청서
+  const [inboxKey, setInboxKey] = useState(0);
   const [toast, setToast] = useState("");
 
   // 주소의 ?doc= 로 바로 열기(메일 링크 등) · 고른 요청을 주소에 남겨 새로고침에도 유지
@@ -53,7 +56,7 @@ export default function LicensePage() {
     <>
       <PageHead title="PMDM License"
                 lead={data?.is_admin ? "신청 → License Key → 결재 → 인증서 → 결과 메일" : "License Key 발급 신청과 처리 상태"}
-                right={<Btn kind="primary" onClick={() => { setCreating(true); setSel(null); }}><Icon name="key" className="h-4 w-4" /> 새 신청</Btn>} />
+                right={<Btn kind="primary" onClick={() => { setCreating(true); setMailFor(null); setSel(null); }}><Icon name="key" className="h-4 w-4" /> 새 신청</Btn>} />
 
       {toast && (
         <div className="mb-4 flex items-center gap-2 rounded-xl bg-ok-soft px-4 py-2.5 text-[13.5px] text-ok">
@@ -67,6 +70,10 @@ export default function LicensePage() {
           {!data.cert_template && "인증서 템플릿(.docx)이 없어 인증서를 만들 수 없음."}
         </div>
       )}
+
+      <MailInbox refreshKey={inboxKey}
+                 onCreate={(id) => { setMailFor(id); setCreating(true); setSel(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                 onOpenDoc={(doc) => { setCreating(false); setSel(doc); }} />
 
       {s && (
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -127,8 +134,8 @@ export default function LicensePage() {
 
         <div className="min-w-0">
           {creating ? (
-            <NewRequest onCancel={() => setCreating(false)}
-                        onDone={(doc, m) => { setCreating(false); setToast(m); setFilter("전체"); reload(); setSel(doc); }} />
+            <NewRequest key={mailFor ?? "blank"} mailId={mailFor} onCancel={() => { setCreating(false); setMailFor(null); }}
+                        onDone={(doc, m) => { setCreating(false); setMailFor(null); setToast(m); setFilter("전체"); reload(); setInboxKey((k) => k + 1); setSel(doc); }} />
           ) : sel ? (
             <Detail key={sel} docId={sel} onChanged={reload} onDeleted={() => { setSel(null); setToast("삭제했습니다"); reload(); }} />
           ) : (

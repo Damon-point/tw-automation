@@ -48,3 +48,15 @@ export function fileToB64(f: File): Promise<string> {
     r.readAsDataURL(f);
   });
 }
+
+// 메일로 들어온 신청 — /api/license/inbox
+export type LicInboxStatus = "new" | "answered" | "linked" | "created" | "dismissed";
+export type LicFields = { company_name: string; quantity: number | null; contact_name: string; contact_email: string; license_user_id: string };
+export type LicInboxItem = {
+  mail_id: number; subject: string; sender: string; sender_email: string; received_at: string;
+  status: LicInboxStatus; doc_id: string; answered_by?: string;
+  scanned: boolean; error: string; is_request: boolean; confidence: number; reason: string;
+  fields: LicFields; missing: string[]; requester: string; country: string; sku: string; po_number: string;
+  note: string; attachments: string[]; po_guess: string; body?: string;
+};
+export type LicInbox = { items: LicInboxItem[]; pending: number; counts: Record<LicInboxStatus, number> };

@@ -98,4 +98,11 @@ def start() -> None:
                 B.sb_tick_once()
 
         _loop("redmine_sb", B.REDMINE_POLL_SEC, 20, redmine)
-    _log("[3080] 백그라운드 시작 — 메일 동기화·알림·WhiteList·Redmine/SB")
+
+    def license_scan() -> None:
+        import license_inbox
+
+        license_inbox.scan()
+
+    _loop("license_inbox", 120, 40, license_scan)
+    _log("[3080] 백그라운드 시작 — 메일 동기화·알림·WhiteList·Redmine/SB·License 메일")

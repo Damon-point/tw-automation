@@ -21,7 +21,6 @@ import os
 import re
 import threading
 from datetime import datetime
-from email.utils import parseaddr
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -35,6 +34,8 @@ from app.license.db import init_license_db
 from app.license.models import LicenseRequest
 from app.models import CachedMail
 from common import user
+
+import license_inbox as LI
 
 router = APIRouter(prefix="/api/license")
 init_license_db()
@@ -189,6 +190,7 @@ class NewIn(BaseModel):
     po_b64: str = ""             # 직접 올린 PO
     mail_id: int | None = None   # 메일에서 가져온 PO
     mail_attachment: str = ""
+    source_mail_id: int | None = None   # 신청서를 만든 근거 메일(메일함에서 처리됨으로)
 
 
 def _mail_attachment_path(mail_id: int, name: str) -> Path:
@@ -252,54 +254,82 @@ def create(body: NewIn, request: Request):
             라이선스아이디=req.license_user_id, 비고=req.note or "-")
         ok, err = user_mailer.send_as_user(u["id"], to_admins, subject.strip(), text)
         mail = {"ok": ok, "error": err, "to": to_admins}
+    src = body.source_mail_id or body.mail_id
+    if src:
+        LI.set_status(src, "created", req.doc_id, u.get("username", ""))
     return {"ok": True, "doc_id": req.doc_id, "request_mail": mail}
 
 
 @router.get("/mail-candidates")
 def mail_candidates(request: Request, q: str = ""):
-    """신청서로 옮길 만한 받은 메일 — 기본은 License·PMDM 이 들어간 첨부 있는 메일."""
+    """신청서로 옮길 메일 고르기 — 비우면 규칙에 걸린 License 메일, 검색어를 주면 제목·보낸 사람."""
     user(request)
-    with get_session() as db:
-        qs = db.query(CachedMail).filter(CachedMail.attachment_names != "")
-        if q.strip():
-            like = f"%{q.strip()}%"
-            qs = qs.filter(CachedMail.subject.like(like) | CachedMail.sender.like(like))
-        else:
-            qs = qs.filter(CachedMail.subject.like("%license%") | CachedMail.subject.like("%라이선스%")
-                           | CachedMail.subject.like("%라이센스%") | CachedMail.subject.like("%PMDM%"))
-        rows = qs.order_by(CachedMail.id.desc()).limit(40).all()
-        return {"mail": [{"id": m.id, "subject": m.subject, "sender": m.sender, "received_at": m.received_at,
-                          "attachments": [a for a in (m.attachment_names or "").splitlines() if a][:8]} for m in rows]}
-
-
-_QTY_RE = re.compile(r"(?:qty|quantity|수량)\s*[:：]?\s*([\d,]+)", re.I)
-_COMPANY_RE = re.compile(r"(?:company(?:\s*name)?|회사(?:명)?|고객사)\s*[:：]\s*(.+)", re.I)
-_ID_RE = re.compile(r"(?:pmdm\s*id|license\s*id|\bid)\s*[:：]\s*(\S+)", re.I)
+    if q.strip():
+        like = f"%{q.strip()}%"
+        with get_session() as db:
+            rows = (db.query(CachedMail).filter(CachedMail.subject.like(like) | CachedMail.sender.like(like))
+                    .order_by(CachedMail.id.desc()).limit(40).all())
+            db.expunge_all()
+    else:
+        rows = LI.candidates()[:40]
+    return {"mail": [{"id": m.id, "subject": m.subject, "sender": m.sender, "received_at": m.received_at,
+                      "attachments": LI.attachments(m)[:8]} for m in rows]}
 
 
 @router.get("/mail/{mail_id}/prefill")
 def mail_prefill(mail_id: int, request: Request):
-    """메일 → 신청서 초안. 보낸 사람을 담당자로, 본문에서 회사·수량·ID 를 찾는다(못 찾으면 비움)."""
+    """메일 → 신청서 초안. Claude 가 본문·첨부를 읽어 찾은 칸만 채운다(처음이면 이 자리에서 읽는다)."""
     user(request)
-    with get_session() as db:
-        m = db.get(CachedMail, mail_id)
-        if m is None:
-            raise HTTPException(404, "메일이 없습니다")
-        name, addr = parseaddr(m.sender or "")
-        body = m.body_text or ""
-        atts = [a for a in (m.attachment_names or "").splitlines() if a]
-        subject = m.subject or ""
+    try:
+        d = LI.detail(mail_id)
+    except KeyError:
+        raise HTTPException(404, "메일이 없습니다")
+    return {**d["fields"], "note": d["note"], "attachments": d["attachments"], "po_guess": d["po_guess"],
+            "missing": d["missing"], "is_request": d["is_request"], "reason": d["reason"], "error": d["error"]}
 
-    def first(rx):
-        mm = rx.search(body)
-        return mm.group(1).strip() if mm else ""
 
-    qty = first(_QTY_RE).replace(",", "")
-    po = [a for a in atts if os.path.splitext(a)[1].lower() in _PO_EXT]
-    return {"contact_name": name.strip().strip('"'), "contact_email": addr,
-            "company_name": first(_COMPANY_RE)[:200], "quantity": int(qty) if qty.isdigit() else None,
-            "license_user_id": first(_ID_RE)[:120], "note": f"메일: {subject}"[:500],
-            "attachments": po, "po_guess": next((a for a in po if "po" in a.lower()), po[0] if po else "")}
+# ── 메일로 들어온 신청 ─────────────────────────────────────────────────────────────
+
+@router.get("/inbox")
+def inbox(request: Request):
+    user(request)
+    out = LI.inbox()
+    if out["pending"]:
+        LI.scan_async()        # 아직 안 읽은 후보는 뒤에서 읽고, 화면은 다시 물어 온다
+    return out
+
+
+@router.get("/inbox/{mail_id}")
+def inbox_detail(mail_id: int, request: Request):
+    user(request)
+    try:
+        return LI.detail(mail_id)
+    except KeyError:
+        raise HTTPException(404, "메일이 없습니다")
+
+
+@router.post("/inbox/{mail_id}/rescan")
+def inbox_rescan(mail_id: int, request: Request):
+    user(request)
+    try:
+        LI.interpret(mail_id)
+        return LI.detail(mail_id)
+    except KeyError:
+        raise HTTPException(404, "메일이 없습니다")
+
+
+@router.post("/inbox/{mail_id}/dismiss")
+def inbox_dismiss(mail_id: int, request: Request):
+    u = user(request)
+    LI.set_status(mail_id, "dismissed", by=u.get("username", ""))
+    return {"ok": True}
+
+
+@router.post("/inbox/{mail_id}/restore")
+def inbox_restore(mail_id: int, request: Request):
+    u = user(request)
+    LI.set_status(mail_id, "new", by=u.get("username", ""))
+    return {"ok": True}
 
 
 # ── 관리자: 키 · 승인 · 반려 ─────────────────────────────────────────────────────

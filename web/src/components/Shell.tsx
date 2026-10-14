@@ -10,7 +10,7 @@ const NAV = [
   { href: "/", label: "오늘 할 일", icon: "home", count: (h?: Home | null) => h ? h.counts.approvals + h.counts.failed + h.counts.review : 0, hot: true },
   { href: "/rounds", label: "OS Update", icon: "rounds", count: (h?: Home | null) => h?.counts.new_rounds ?? 0, hot: true },
   { href: "/whitelist", label: "WhiteList · DQA", icon: "shield" },
-  { href: "/license", label: "PMDM License", icon: "key" },
+  { href: "/license", label: "PMDM License", icon: "key", count: (h?: Home | null) => h?.counts.license_mail ?? 0, hot: true },
   { href: "/issues", label: "Solution Buffer", icon: "bug" },
   { href: "/mail", label: "메일", icon: "inbox" },
   { href: "/products", label: "제품 관리", icon: "box" },
