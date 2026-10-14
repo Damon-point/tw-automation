@@ -223,9 +223,9 @@ class SeenUidl(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
+    # 외래키를 걸지 않는다 — 공용 수신 메일함은 실제 계정이 아닌 0(mail.service.SHARED_UIDL_OWNER)을
+    # 주인으로 쓴다. SQLite 는 외래키를 검사하지 않아 통과했지만 PostgreSQL 은 거부한다.
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
     uidl: Mapped[str] = mapped_column(String(255), index=True)
 
 
@@ -286,7 +286,8 @@ class FotaEntry(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    mail_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    # 메일 번호 또는 작업 키('job-18') — SQLite 는 정수 칸에 글자도 받아 줘서 둘 다 들어 있었다
+    mail_id: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     os_type: Mapped[str] = mapped_column(String(60), index=True)   # 예: PM95GMS13
     version: Mapped[str] = mapped_column(String(80))               # 예: 95.07 (Jul 02 2026)
     os_version: Mapped[int] = mapped_column(Integer, default=0)    # FOTA 카운터

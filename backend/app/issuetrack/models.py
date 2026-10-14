@@ -19,7 +19,6 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
-    Index,
     Integer,
     String,
     Text,
@@ -119,8 +118,9 @@ class JournalDetail(IssuetrackBase):
     """journal 안의 속성 변경 1건. (property, name) 예: ('attr','status_id')"""
 
     __tablename__ = "rm_journal_details"
+    # (name, new_value) 묶음 색인은 뺐다 — new_value 에 설명 전문이 들어오면 PostgreSQL 색인 한도(2.7KB)를
+    # 넘어 저장이 막힌다. SQL 에서 new_value 로 거르는 곳이 없고(비교는 파이썬에서), name 은 따로 색인이 있다.
     __table_args__ = (
-        Index("ix_rm_jd_name_new", "name", "new_value"),
         UniqueConstraint("journal_id", "seq", name="uq_rm_jd_journal_seq"),
     )
 

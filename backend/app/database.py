@@ -1,35 +1,20 @@
-"""SQLite 연결 / 세션 헬퍼.
+"""DB 연결 / 세션 헬퍼.
 
-DB 파일은 프로젝트 루트의 tw_app.db 에 생성된다.
+3080 은 로컬 PostgreSQL 의 public 스키마(app.dbconf), 설정이 없으면 프로젝트 루트의 tw_app.db(SQLite).
 """
 from pathlib import Path
 
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 # 프로젝트 루트 (app/ 의 부모)
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "tw_app.db"
 
-# 여러 사람이 동시에 쓰는 환경(전용 PC + 브라우저 4명)이라 잠금 설정이 필요하다.
-#   busy_timeout : 다른 연결이 쓰는 중이면 즉시 예외("database is locked") 대신 기다린다.
-#   WAL          : 읽기가 쓰기를 막지 않는다(조회 중 저장 가능).
-_BUSY_TIMEOUT_MS = 8000
+# PostgreSQL 이면 public 스키마, 아니면 SQLite(WAL + busy_timeout — 여러 사람이 동시에 쓴다)
+from app.dbconf import make_engine  # noqa: E402
 
-engine = create_engine(
-    f"sqlite:///{DB_PATH}",
-    echo=False,
-    connect_args={"check_same_thread": False, "timeout": _BUSY_TIMEOUT_MS / 1000},
-)
-
-
-@event.listens_for(engine, "connect")
-def _set_sqlite_pragmas(dbapi_conn, _rec):
-    cur = dbapi_conn.cursor()
-    cur.execute("PRAGMA journal_mode=WAL")
-    cur.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
-    cur.execute("PRAGMA synchronous=NORMAL")   # WAL 에서 안전하면서 쓰기가 빠르다
-    cur.close()
+engine = make_engine("public", DB_PATH)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
@@ -85,7 +70,7 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
 
 
 def _migrate() -> None:
-    """기존 테이블에 누락된 컬럼을 안전하게 추가(SQLite)."""
+    """기존 테이블에 누락된 컬럼을 안전하게 추가(예전 SQLite 파일용 — PostgreSQL 은 create_all 이 다 만든다)."""
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
     with engine.begin() as conn:

@@ -326,7 +326,7 @@ def _record_fota(user_id, mail_id, os_type, version, os_ver, oi_added, dp_added)
             row.downloadpath_added = dp_added
         else:
             db.add(FotaEntry(
-                user_id=user_id, mail_id=mail_id, os_type=os_type, version=version,
+                user_id=user_id, mail_id=None if mail_id is None else str(mail_id), os_type=os_type, version=version,
                 os_version=os_ver, osinfo_added=oi_added, downloadpath_added=dp_added,
             ))
         db.commit()

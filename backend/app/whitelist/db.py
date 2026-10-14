@@ -6,18 +6,14 @@ import 시 자동으로 스키마를 생성한다.
 """
 from __future__ import annotations
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.database import BASE_DIR
+from app.dbconf import make_engine
 
-WHITELIST_DB_PATH = BASE_DIR / "whitelist.db"
+WHITELIST_DB_PATH = BASE_DIR / "whitelist.db"     # SQLite 일 때의 파일 · PO 첨부 폴더의 기준 위치
 
-whitelist_engine = create_engine(
-    f"sqlite:///{WHITELIST_DB_PATH}",
-    echo=False,
-    connect_args={"check_same_thread": False},
-)
+whitelist_engine = make_engine("whitelist", WHITELIST_DB_PATH, wal=False)
 
 WhitelistSessionLocal = sessionmaker(
     bind=whitelist_engine, autoflush=False, expire_on_commit=False

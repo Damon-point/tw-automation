@@ -8,30 +8,15 @@ DB 와 섞지 않는 편이 백업·초기화 모두 안전하다.
 """
 from __future__ import annotations
 
-from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.database import BASE_DIR
+from app.dbconf import make_engine
 
 ISSUETRACK_DB_PATH = BASE_DIR / "issuetrack.db"
 
-# 백필이 수천 건을 연속으로 쓰는 동안 화면 조회가 막히지 않도록 WAL + busy_timeout.
-_BUSY_TIMEOUT_MS = 8000
-
-issuetrack_engine = create_engine(
-    f"sqlite:///{ISSUETRACK_DB_PATH}",
-    echo=False,
-    connect_args={"check_same_thread": False, "timeout": _BUSY_TIMEOUT_MS / 1000},
-)
-
-
-@event.listens_for(issuetrack_engine, "connect")
-def _set_pragmas(dbapi_conn, _rec):
-    cur = dbapi_conn.cursor()
-    cur.execute("PRAGMA journal_mode=WAL")
-    cur.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
-    cur.execute("PRAGMA synchronous=NORMAL")
-    cur.close()
+# SQLite 일 때는 백필이 수천 건을 연속으로 쓰는 동안 조회가 막히지 않도록 WAL + busy_timeout.
+issuetrack_engine = make_engine("issuetrack", ISSUETRACK_DB_PATH)
 
 
 IssuetrackSessionLocal = sessionmaker(

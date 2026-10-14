@@ -6,18 +6,14 @@ import 시 자동으로 스키마를 생성한다(별도 startup 훅 불필요).
 """
 from __future__ import annotations
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.database import BASE_DIR
+from app.dbconf import make_engine
 
 LICENSE_DB_PATH = BASE_DIR / "pmdm_license.db"
 
-license_engine = create_engine(
-    f"sqlite:///{LICENSE_DB_PATH}",
-    echo=False,
-    connect_args={"check_same_thread": False},
-)
+license_engine = make_engine("license", LICENSE_DB_PATH, wal=False)
 
 LicenseSessionLocal = sessionmaker(
     bind=license_engine, autoflush=False, expire_on_commit=False
