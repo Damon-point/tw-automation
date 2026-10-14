@@ -21,6 +21,14 @@ if (-not (Get-NetTCPConnection -LocalPort 5432 -State Listen -ErrorAction Silent
     for ($i = 0; $i -lt 30 -and -not (Get-NetTCPConnection -LocalPort 5432 -State Listen -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
     if (-not (Get-NetTCPConnection -LocalPort 5432 -State Listen -ErrorAction SilentlyContinue)) { throw "PostgreSQL 이 켜지지 않았습니다 — $pgData\log 를 보세요" }
 }
+# 포트가 열려도 PC 가 갑자기 꺼진 뒤라면 복구하는 동안 접속을 거부한다("database system is starting up").
+# 접속을 받을 때까지(최대 2분) 기다린 뒤 API 를 띄운다 — 2026-10-15 재부팅 뒤 API 가 이것 때문에 죽었다.
+for ($i = 0; $i -lt 120; $i++) {
+    & (Join-Path $pgBin "pg_isready.exe") -h 127.0.0.1 -p 5432 -q
+    if ($LASTEXITCODE -eq 0) { break }
+    Start-Sleep -Seconds 1
+}
+if ($LASTEXITCODE -ne 0) { throw "PostgreSQL 이 접속을 받지 않습니다 — $pgData\log 를 보세요" }
 
 Start-Process -FilePath $py -ArgumentList "-X utf8 -m uvicorn main:app --host 127.0.0.1 --port 8180" `
     -WorkingDirectory (Join-Path $root "api") -WindowStyle Hidden `
