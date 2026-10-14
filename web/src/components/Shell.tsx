@@ -34,16 +34,16 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const name = me.data?.username ?? "";
   return (
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[240px_1fr]">
-      <aside className="sticky top-0 z-10 flex flex-col gap-1 bg-side px-3 py-4 text-side-text lg:h-screen">
+      <aside className="sticky top-0 z-10 flex flex-col gap-1 border-b border-side-line bg-side px-3 py-4 text-side-text lg:h-screen lg:border-b-0 lg:border-r">
         <div className="mb-3 flex items-center">
-        <Link href="/" className="flex flex-1 items-center gap-2.5 px-2 text-white">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[#5b8cff] to-[#2f6bff] text-[13px] font-extrabold">tw</span>
+        <Link href="/" className="flex flex-1 items-center gap-2.5 px-2 text-side-strong">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[#5b8cff] to-[#2f6bff] text-[13px] font-extrabold text-white">tw</span>
           <span>
             <span className="block text-[15px] font-bold leading-tight">TW Automation</span>
             <span className="block text-[11px] text-side-dim">OS 배포 · FOTA · 문서</span>
           </span>
         </Link>
-        <ThemeCycle className="text-side-dim hover:bg-side-active hover:text-white lg:hidden" />
+        <ThemeCycle className="text-side-dim hover:bg-side-hover hover:text-side-strong lg:hidden" />
         </div>
         <nav className="flex flex-row flex-wrap gap-1 lg:flex-col">
           {NAV.map((n) => {
@@ -52,7 +52,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             return (
               <Link key={n.href} href={n.href}
                     className={cx("flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] font-medium transition-colors",
-                      active ? "bg-side-active text-white" : "hover:bg-side-active hover:text-white")}>
+                      active ? "bg-side-active font-semibold text-side-active-text" : "hover:bg-side-hover hover:text-side-strong")}>
                 <Icon name={n.icon} className="h-[18px] w-[18px] opacity-85" />
                 <span className="flex-1">{n.label}</span>
                 {c > 0 && <span className={cx("rounded-full px-2 text-[11px] font-bold", n.hot ? "bg-[#d97706] text-white" : "text-side-dim")}>{c}</span>}
@@ -60,20 +60,20 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className="mt-auto hidden border-t border-side-active pt-3 lg:block">
+        <div className="mt-auto hidden border-t border-side-line pt-3 lg:block">
           <ThemeSwitch className="mb-2" />
           {me.data?.legacy_url && (
-            <a href={me.data.legacy_url} target="_blank" rel="noreferrer" className="mb-2 block rounded-lg px-2.5 py-2 text-[12.5px] text-side-dim hover:bg-side-active hover:text-white">
+            <a href={me.data.legacy_url} target="_blank" rel="noreferrer" className="mb-2 block rounded-lg px-2.5 py-2 text-[12.5px] text-side-dim hover:bg-side-hover hover:text-side-strong">
               기존 화면(8080) 열기 ↗
             </a>
           )}
           <div className="flex items-center gap-2.5 px-2 py-1.5">
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-[#2a3450] text-[12px] font-bold text-white">{name.slice(0, 2).toUpperCase()}</span>
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-side-chip text-[12px] font-bold text-side-chip-text">{name.slice(0, 2).toUpperCase()}</span>
             <span className="flex-1 leading-tight">
-              <span className="block truncate text-[13px] text-white">{name}</span>
+              <span className="block truncate text-[13px] text-side-strong">{name}</span>
               <span className="block text-[11px] text-side-dim">{ROLE[me.data?.role ?? ""] ?? me.data?.role}</span>
             </span>
-            <button onClick={logout} title="로그아웃" className="rounded-md p-1.5 text-side-dim hover:bg-side-active hover:text-white">
+            <button onClick={logout} title="로그아웃" className="rounded-md p-1.5 text-side-dim hover:bg-side-hover hover:text-side-strong">
               <Icon name="logout" />
             </button>
           </div>

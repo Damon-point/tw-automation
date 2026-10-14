@@ -46,11 +46,11 @@ function useTheme(): [Theme, (t: Theme) => void] {
 export function ThemeSwitch({ className }: { className?: string }) {
   const [t, set] = useTheme();
   return (
-    <div role="radiogroup" aria-label="화면 테마" className={cx("flex rounded-lg bg-side-active p-0.5", className)}>
+    <div role="radiogroup" aria-label="화면 테마" className={cx("flex rounded-lg bg-side-hover p-0.5", className)}>
       {OPTS.map((o) => (
         <button key={o.v} role="radio" aria-checked={t === o.v} title={o.label} onClick={() => set(o.v)}
                 className={cx("flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[12px] font-medium transition-colors",
-                  t === o.v ? "bg-[#2a3450] text-white" : "text-side-dim hover:text-white")}>
+                  t === o.v ? "bg-side-seg font-semibold text-side-strong shadow-sm" : "text-side-dim hover:text-side-strong")}>
           <Icon name={o.icon} className="h-3.5 w-3.5" />{o.label}
         </button>
       ))}

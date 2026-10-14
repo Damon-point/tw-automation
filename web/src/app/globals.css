@@ -30,10 +30,18 @@
   --info: #2563eb;
   --info-soft: #e8efff;
   --muted-soft: #eef0f3;
-  --side: #0f1420;
-  --side-text: #c7cbd6;
-  --side-dim: #7c8294;
-  --side-active: #1b2336;
+  /* 사이드바 — 라이트는 흰 바탕, 다크는 짙은 남색 */
+  --side: #ffffff;
+  --side-line: #e4e6eb;
+  --side-text: #4b5160;
+  --side-dim: #8a90a0;
+  --side-strong: #15181e;
+  --side-hover: #f1f3f7;
+  --side-active: #e8efff;
+  --side-active-text: #1d4ed8;
+  --side-chip: #e9ecf2;
+  --side-chip-text: #15181e;
+  --side-seg: #ffffff;
 }
 
 /* 테마 — <html data-theme="light|dark">. 없으면 시스템 설정을 따른다(사이드바 아래 전환, localStorage twn-theme) */
@@ -58,7 +66,16 @@
     --info-soft: #1b2742;
     --muted-soft: #222835;
     --side: #0a0d14;
-    --side-active: #161c2a;
+    --side-line: #161c2a;
+    --side-text: #c7cbd6;
+    --side-dim: #7c8294;
+    --side-strong: #ffffff;
+    --side-hover: #161c2a;
+    --side-active: #1b2336;
+    --side-active-text: #ffffff;
+    --side-chip: #2a3450;
+    --side-chip-text: #ffffff;
+    --side-seg: #2a3450;
   
 }
 @media (prefers-color-scheme: dark) {
@@ -82,7 +99,16 @@
     --info-soft: #1b2742;
     --muted-soft: #222835;
     --side: #0a0d14;
-    --side-active: #161c2a;
+    --side-line: #161c2a;
+    --side-text: #c7cbd6;
+    --side-dim: #7c8294;
+    --side-strong: #ffffff;
+    --side-hover: #161c2a;
+    --side-active: #1b2336;
+    --side-active-text: #ffffff;
+    --side-chip: #2a3450;
+    --side-chip-text: #ffffff;
+    --side-seg: #2a3450;
   
   }
 }
@@ -120,6 +146,13 @@
   --color-side-text: var(--side-text);
   --color-side-dim: var(--side-dim);
   --color-side-active: var(--side-active);
+  --color-side-line: var(--side-line);
+  --color-side-strong: var(--side-strong);
+  --color-side-hover: var(--side-hover);
+  --color-side-active-text: var(--side-active-text);
+  --color-side-chip: var(--side-chip);
+  --color-side-chip-text: var(--side-chip-text);
+  --color-side-seg: var(--side-seg);
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
   --font-mono: "Cascadia Code", Consolas, monospace;
 }
