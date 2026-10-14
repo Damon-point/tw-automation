@@ -1,4 +1,4 @@
-# tw-next — TW Automation 새 화면 (Next.js)
+# tw-automation-v2 — TW Automation 새 시스템 (Next.js + FastAPI · 3080, 예전 이름 tw-next)
 
 기존 시스템(`tw-automation`, 8080)의 화면을 Next.js 로 다시 만든다. **tw-automation 폴더는 고치지 않는다.**
 

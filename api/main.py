@@ -1,5 +1,5 @@
 """
-tw-next API — 3080 의 업무 서버. 8080(tw-automation)과 따로 돈다.
+tw-automation-v2 API — 3080 의 업무 서버. 8080(tw-automation)과 따로 돈다.
 
 - 업무 코드·DB·work 폴더는 backend/ 의 사본을 쓴다(8080 것은 건드리지 않는다).
 - 단계 실행·검수·업로드·결재도 여기서 한다. 진행률이 이 프로세스 메모리에 있으므로
@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from urllib.parse import quote
 from datetime import datetime
 from pathlib import Path
 
@@ -46,7 +47,7 @@ import runtime  # noqa: E402
 LEGACY_URL = os.getenv("TWN_LEGACY_URL", "http://192.168.121.35:8080").rstrip("/")
 SECRET = os.getenv("TWN_SECRET", "")
 if not SECRET:
-    raise SystemExit("TWN_SECRET 가 .env 에 없습니다 (tw-next/.env)")
+    raise SystemExit("TWN_SECRET 가 .env 에 없습니다 (tw-automation-v2/.env)")
 
 from contextlib import asynccontextmanager  # noqa: E402
 
@@ -57,7 +58,7 @@ async def _lifespan(_app):
     yield
 
 
-app = FastAPI(title="tw-next api", docs_url=None, redoc_url=None, lifespan=_lifespan)
+app = FastAPI(title="tw-automation-v2 api", docs_url=None, redoc_url=None, lifespan=_lifespan)
 app.add_middleware(SessionMiddleware, secret_key=SECRET, session_cookie="twn_session",
                    max_age=60 * 60 * 12, same_site="lax", https_only=False)
 
@@ -345,7 +346,8 @@ def job_detail(job_id: int, request: Request):
     artifacts = []
     try:
         for a in J.artifacts_for({"job": j, "version": j.get("version"), "release": None, "product": {}}):
-            artifacts.append({**a, "url": f"/api/files?path={a['path']}" if _inside(a["path"]) else ""})
+            # 경로를 인코딩해야 파일 이름의 '&' · '#' · 공백이 주소를 끊지 않는다
+            artifacts.append({**a, "url": f"/api/files?path={quote(a['path'])}" if _inside(a["path"]) else ""})
     except Exception:  # noqa: BLE001
         pass
     basis = []
