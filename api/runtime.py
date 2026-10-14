@@ -91,16 +91,7 @@ def start() -> None:
     _loop("mail_sync", B.SYNC_INTERVAL_SEC, B.SYNC_INTERVAL_SEC, tick)
     if getattr(B, "WL_POLL_ENABLED", False):
         _loop("whitelist_poll", B.WL_POLL_SEC, 25, B.whitelist_poll_once)
-    if getattr(B, "REDMINE_ENABLED", False):
-        def redmine() -> None:
-            res = B.redmine_poll_once()
-            if not (res or {}).get("error"):
-                B.sb_tick_once()
-            from routers import issues as IR
-
-            IR.warm_stats()         # 바뀐 것이 없으면 판번호가 같아 바로 끝난다
-
-        _loop("redmine_sb", B.REDMINE_POLL_SEC, 20, redmine)
+    # Redmine 수집 · Solution Buffer 는 별도 프로젝트(pointmobile-faq, 3070)로 옮겼다(2026-10-14) — 여기서는 돌리지 않는다.
 
     def license_scan() -> None:
         import license_inbox
@@ -108,4 +99,4 @@ def start() -> None:
         license_inbox.scan()
 
     _loop("license_inbox", 120, 40, license_scan)
-    _log("[3080] 백그라운드 시작 — 메일 동기화·알림·WhiteList·Redmine/SB·License 메일")
+    _log("[3080] 백그라운드 시작 — 메일 동기화·알림·WhiteList·License 메일")

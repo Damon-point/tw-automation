@@ -40,10 +40,6 @@ export type SettingsOverview = {
   dropbox: { mode: "refresh" | "legacy" | "none"; has_app_key: boolean; updated_at: string };
   mailchimp: { has_key: boolean; server_prefix: string; from_name: string; reply_to: string; subject_default: string; updated_at: string };
   claude: { backend: "subscription" | "api"; claude: string; has_key: boolean };
-  sb: {
-    sb_auto_notify: boolean; sb_assignees: string; exclude_keywords: string; sb_auto_generate: boolean; sb_per_tick: number;
-    missing_accounts: { name: string; count: number }[];
-  };
 };
 
 export type ShadowWrite = { at: string; system: string; action: string; [k: string]: unknown };

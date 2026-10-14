@@ -12,7 +12,6 @@ const NAV = [
   { href: "/rounds", label: "OS Update", icon: "rounds", count: (h?: Home | null) => h?.counts.new_rounds ?? 0, hot: true },
   { href: "/whitelist", label: "WhiteList · DQA", icon: "shield" },
   { href: "/license", label: "PMDM License", icon: "key", count: (h?: Home | null) => h?.counts.license_mail ?? 0, hot: true },
-  { href: "/issues", label: "Solution Buffer", icon: "bug" },
   { href: "/mail", label: "메일", icon: "inbox" },
   { href: "/products", label: "제품 관리", icon: "box" },
   { href: "/settings", label: "설정", icon: "gear" },

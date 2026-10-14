@@ -74,9 +74,6 @@ export default function SettingsHome() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <Tile href="/settings/claude" title="Claude 호출" ok={s.claude.backend === "subscription" ? !!s.claude.claude : s.claude.has_key}
                 okText={s.claude.backend === "subscription" ? "구독" : "API 열쇠"} noText="쓸 수 없음" />
-          <Tile href="/settings/sb" title="Solution Buffer 알림 메일" ok={s.sb.sb_auto_notify} okText="자동 발송" noText="수동 발송">
-            <div className="truncate">대상 {s.sb.sb_assignees || "전체"}</div>
-          </Tile>
         </div>
       </div>
     </>

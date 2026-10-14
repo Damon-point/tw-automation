@@ -143,19 +143,6 @@ def settings_overview(request: Request):
     st = CC.status()
     out["claude"] = {"backend": st["backend"], "claude": st["claude"] or "", "has_key": bool(st["has_key"])}
 
-    from app.issuetrack import settings as it_settings
-
-    cfg = it_settings.load()
-    missing = []
-    try:
-        from app.issuetrack import sb as _sb
-
-        missing = [{"name": n, "count": c} for n, c in _sb.assignees_without_account()]
-    except Exception:  # noqa: BLE001
-        pass
-    out["sb"] = {"sb_auto_notify": cfg.sb_auto_notify, "sb_assignees": cfg.sb_assignees,
-                 "exclude_keywords": cfg.exclude_keywords, "sb_auto_generate": cfg.sb_auto_generate,
-                 "sb_per_tick": cfg.sb_per_tick, "missing_accounts": missing}
     return out
 
 
@@ -467,7 +454,7 @@ def test_mailchimp(request: Request):
     return {"ok": ok, "message": msg}
 
 
-# ── Claude · Solution Buffer ────────────────────────────────────────────────────
+# ── Claude ────────────────────────────────────────────────────
 
 class ClaudeIn(BaseModel):
     backend: str
@@ -503,27 +490,6 @@ def try_claude(request: Request):
     use = r.usage
     return {"ok": True, "message": f"{time.time() - t:.1f}초 · 답 {said[:20]!r} · 토큰 "
                                    f"{getattr(use, 'input_tokens', 0)}/{getattr(use, 'output_tokens', 0)}"}
-
-
-class SbIn(BaseModel):
-    key: str
-    value: str | bool | int
-
-
-_SB_KEYS = {"sb_auto_notify": bool, "sb_assignees": str, "exclude_keywords": str}
-
-
-@router.post("/settings/sb")
-def save_sb(body: SbIn, request: Request):
-    user(request)
-    from app.issuetrack import settings as it_settings
-
-    typ = _SB_KEYS.get(body.key)
-    if typ is None:
-        _bad("바꿀 수 없는 항목입니다")
-    val = bool(body.value) if typ is bool else str(body.value or "").strip()
-    it_settings.set_(body.key, val)
-    return {"ok": True}
 
 
 # ── 자격증명 현황(계정별 · 값은 내보내지 않는다) ───────────────────────────────────────

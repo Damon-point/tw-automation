@@ -8,11 +8,11 @@ import { errText, send, type ShadowResp, type ShadowWrite } from "@/lib/admin";
 
 const SYSTEM: Record<string, string> = {
   mail: "메일", dropbox: "Dropbox", fileserver: "파일 서버", fota_web: "FOTA 웹", fota_whitelist: "FOTA WhiteList",
-  fota_db: "FOTA DB", service_portal: "Service Portal", confluence: "Confluence", sb_confluence: "SB Confluence",
+  fota_db: "FOTA DB", service_portal: "Service Portal", confluence: "Confluence",
   mailchimp: "Mailchimp", system: "운영 전환",
 };
 
-const LOOP: Record<string, string> = { mail_sync: "메일 동기화 · 알림", whitelist_poll: "WhiteList 메일 판별", redmine_sb: "Redmine · Solution Buffer" };
+const LOOP: Record<string, string> = { mail_sync: "메일 동기화 · 알림", whitelist_poll: "WhiteList 메일 판별" };
 
 const PHRASE = "운영 전환";
 
@@ -150,7 +150,7 @@ export default function ShadowPage() {
         <div className="space-y-3 text-[14px] text-ink-2">
           <p>전환하면 3080 이 메일을 실제로 보내고, Dropbox·파일 서버·FOTA·Service Portal·Confluence·Mailchimp 에 실제로 씁니다.
             8080 에서 같은 작업을 돌리고 있으면 두 번 올라가거나 메일이 두 번 나갑니다.</p>
-          <p>메일 동기화 · WhiteList 판별 · Solution Buffer 알림처럼 사람이 누르지 않아도 도는 작업도 그 순간부터 실제로 보냅니다.</p>
+          <p>메일 동기화 · WhiteList 판별 · License 메일 읽기처럼 사람이 누르지 않아도 도는 작업도 그 순간부터 실제로 보냅니다.</p>
           <label className="block">
             <span className="mb-1 block text-[12.5px] font-semibold">아래 칸에 <b className="text-err">{PHRASE}</b> 를 입력하세요</span>
             <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={PHRASE} autoFocus />

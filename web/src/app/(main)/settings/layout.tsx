@@ -24,7 +24,6 @@ const GROUPS: { title: string; items: Item[] }[] = [
     title: "자동화",
     items: [
       { href: "/settings/claude", label: "Claude 호출", admin: true },
-      { href: "/settings/sb", label: "Solution Buffer" },
     ],
   },
   {
