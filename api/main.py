@@ -1,13 +1,13 @@
 """
-tw-next API — 기존 tw-automation 의 데이터를 **읽어서** Next.js 화면에 준다.
+tw-next API — 3080 의 업무 서버. 8080(tw-automation)과 따로 돈다.
 
-- tw-automation 폴더는 고치지 않는다. 코드는 import 만, DB·work 폴더는 읽기만.
-- 쓰기(단계 실행 · 검수 · 업로드 · 발송)는 1단계에서 하지 않는다. 진행률이 8080 프로세스 메모리에
-  있어서, 두 서버가 같은 단계를 돌리면 화면이 굳는다(2026-10-07 사고). 화면은 8080 의 해당
-  위치로 바로 가는 링크를 준다.
-- 로그인은 기존 계정(users 표)의 비밀번호로 확인하고, 서명된 쿠키 세션을 쓴다.
+- 업무 코드·DB·work 폴더는 backend/ 의 사본을 쓴다(8080 것은 건드리지 않는다).
+- 단계 실행·검수·업로드·결재도 여기서 한다. 진행률이 이 프로세스 메모리에 있으므로
+  단계와 주기 작업(runtime.py)은 이 프로세스 안에서만 돈다.
+- 외부 시스템 쓰기는 검증 모드(app.shadow)가 막고 기록만 한다. 운영 전환은 관리자가 한다.
+- 로그인은 users 표의 비밀번호로 확인하고, 서명된 쿠키 세션을 쓴다.
 
-    python -m uvicorn main:app --host 127.0.0.1 --port 8180   (api 폴더에서, tw-automation 의 venv 로)
+    python -m uvicorn main:app --host 127.0.0.1 --port 8180   (api 폴더에서, backend/.venv 로)
 """
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ from dotenv import load_dotenv
 
 HERE = Path(__file__).resolve().parent
 load_dotenv(HERE.parent / ".env")
-TWA = Path(os.getenv("TWN_TWA_DIR", r"C:\Users\POINTMOBILE\dev\tw-automation")).resolve()
-load_dotenv(TWA / ".env")          # 기존 앱의 FERNET_KEY 등 — 값은 여기서 쓰지 않는다
+TWA = Path(os.getenv("TWN_BACKEND_DIR", str(HERE.parent / "backend"))).resolve()   # 3080 전용 업무 코드·데이터
+load_dotenv(TWA / ".env")          # 3080 백엔드 설정(FERNET_KEY 등)
 sys.path.insert(0, str(TWA))
 
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
@@ -37,13 +37,27 @@ from app.database import get_session  # noqa: E402
 from app.models import CachedMail, OsUpdateJob, OsUpdateJobStage, User  # noqa: E402
 from app.pipeline.state import get_state  # noqa: E402
 from app.security import verify_password  # noqa: E402
+from app import app_settings, shadow  # noqa: E402
+
+import osu_actions as A  # noqa: E402
+import osu_reviews as R  # noqa: E402
+import runtime  # noqa: E402
 
 LEGACY_URL = os.getenv("TWN_LEGACY_URL", "http://192.168.121.35:8080").rstrip("/")
 SECRET = os.getenv("TWN_SECRET", "")
 if not SECRET:
     raise SystemExit("TWN_SECRET 가 .env 에 없습니다 (tw-next/.env)")
 
-app = FastAPI(title="tw-next api", docs_url=None, redoc_url=None)
+from contextlib import asynccontextmanager  # noqa: E402
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    runtime.start()
+    yield
+
+
+app = FastAPI(title="tw-next api", docs_url=None, redoc_url=None, lifespan=_lifespan)
 app.add_middleware(SessionMiddleware, secret_key=SECRET, session_cookie="twn_session",
                    max_age=60 * 60 * 12, same_site="lax", https_only=False)
 
@@ -101,7 +115,7 @@ def dev_login(request: Request):
 @app.get("/api/me")
 def me(request: Request):
     u = _user(request)
-    return {**u, "legacy_url": LEGACY_URL}
+    return {**u, "legacy_url": LEGACY_URL, "live": shadow.live()}
 
 
 # ── 공통 ───────────────────────────────────────────────────────────────────────
@@ -297,7 +311,8 @@ def job_detail(job_id: int, request: Request):
             r = by_key.get(k)
             status = r.status if r else "pending"
             items.append({
-                "key": k, "label": _label(k, side), "status": status,
+                "id": r.id if r else None, "key": k, "label": _label(k, side), "status": status,
+                "input": (r.input_params or "") if r else "",
                 "updated_by": r.updated_by if r else "", "updated_at": _iso(r.updated_at) if r else "",
                 "result": (r.result_text or "") if r else "",
                 "summary": summarize_result(r.result_text if r else ""),
@@ -334,9 +349,172 @@ def job_detail(job_id: int, request: Request):
                 "os_type": j.get("os_type", ""), "version": j.get("version", ""), "created_by": j.get("created_by", ""),
                 "created_at": _iso(j.get("created_at"))},
         "sides": sides, "facts": facts, "uploads": uploads, "rn": rn, "artifacts": artifacts, "basis": basis,
+        "reviews": R.state_of(job_id), "progress": A.progress_of(job_id),
+        "can_decide": {k: R.can_decide(k, _user(request)) for k in R.KINDS},
         "legacy": {"osupdate": f"{LEGACY_URL}/osupdate", "newtasks": f"{LEGACY_URL}/newtasks",
                    "reviews": f"{LEGACY_URL}/reviews", "final_reviews": f"{LEGACY_URL}/final-reviews"},
     }
+
+
+# ── 작업 쓰기: 실행 · 검수 · 업로드 · 결재 ─────────────────────────────────────────
+
+class StageIn(BaseModel):
+    stage_id: int
+
+
+class SideIn(BaseModel):
+    side: str
+
+
+class TextIn(BaseModel):
+    stage_id: int
+    text: str = ""
+
+
+class StateValueIn(BaseModel):
+    key: str
+    value: str = ""
+
+
+class SelectionIn(BaseModel):
+    rows: list[dict]
+
+
+class NoteIn(BaseModel):
+    no: str
+    value: str = ""
+
+
+class DecideIn(BaseModel):
+    approve: bool
+    note: str = ""
+
+
+def _act(fn, *a):
+    try:
+        return fn(*a)
+    except (A.ActionError, R.ReviewError) as e:
+        raise HTTPException(409, str(e))
+
+
+@app.post("/api/jobs/{job_id}/run-next")
+def act_run_next(job_id: int, body: SideIn, request: Request):
+    return _act(A.run_next, job_id, body.side, _user(request))
+
+
+@app.post("/api/jobs/{job_id}/run")
+def act_run(job_id: int, body: StageIn, request: Request):
+    return _act(A.run_stage, job_id, body.stage_id, _user(request))
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def act_cancel(job_id: int, body: StageIn, request: Request):
+    _user(request)
+    return _act(A.cancel, job_id, body.stage_id)
+
+
+@app.get("/api/jobs/{job_id}/progress")
+def act_progress(job_id: int, request: Request):
+    _user(request)
+    return A.progress_of(job_id)
+
+
+@app.get("/api/jobs/{job_id}/revert-preview")
+def act_revert_preview(job_id: int, stage_id: int, request: Request):
+    _user(request)
+    return _act(A.revert_preview, job_id, stage_id)
+
+
+@app.post("/api/jobs/{job_id}/revert")
+def act_revert(job_id: int, body: StageIn, request: Request):
+    return _act(A.revert, job_id, body.stage_id, _user(request))
+
+
+@app.post("/api/jobs/{job_id}/review-done")
+def act_review_done(job_id: int, body: StageIn, request: Request):
+    return _act(A.review_done, job_id, body.stage_id, _user(request))
+
+
+@app.post("/api/jobs/{job_id}/skip")
+def act_skip(job_id: int, body: StageIn, request: Request):
+    return _act(A.skip, job_id, body.stage_id, _user(request))
+
+
+@app.post("/api/jobs/{job_id}/rework")
+def act_rework(job_id: int, body: TextIn, request: Request):
+    return _act(A.rework, job_id, body.stage_id, body.text, _user(request))
+
+
+@app.post("/api/jobs/{job_id}/input")
+def act_input(job_id: int, body: TextIn, request: Request):
+    _user(request)
+    return _act(A.set_input, job_id, body.stage_id, body.text)
+
+
+@app.post("/api/jobs/{job_id}/state")
+def act_state(job_id: int, body: StateValueIn, request: Request):
+    _user(request)
+    return _act(A.set_state_value, job_id, body.key, body.value)
+
+
+@app.get("/api/jobs/{job_id}/upload-plan")
+def act_upload_plan(job_id: int, stage_id: int, request: Request):
+    _user(request)
+    return _act(A.upload_plan, job_id, stage_id)
+
+
+@app.post("/api/jobs/{job_id}/upload")
+def act_upload(job_id: int, body: StageIn, request: Request):
+    return _act(A.upload, job_id, body.stage_id, _user(request))
+
+
+@app.get("/api/jobs/{job_id}/selection")
+def act_selection(job_id: int, request: Request):
+    _user(request)
+    return _act(A.selection, job_id)
+
+
+@app.post("/api/jobs/{job_id}/selection")
+def act_save_selection(job_id: int, body: SelectionIn, request: Request):
+    return _act(A.save_selection, job_id, body.rows, _user(request))
+
+
+@app.post("/api/jobs/{job_id}/exclude-note")
+def act_exclude_note(job_id: int, body: NoteIn, request: Request):
+    _user(request)
+    return _act(A.save_exclude_note, job_id, body.no, body.value)
+
+
+@app.post("/api/jobs/{job_id}/reviews/{kind}/request")
+def rv_request(job_id: int, kind: str, request: Request):
+    return _act(R.request, job_id, kind, _user(request))
+
+
+@app.post("/api/jobs/{job_id}/reviews/{kind}/decide")
+def rv_decide(job_id: int, kind: str, body: DecideIn, request: Request):
+    return _act(R.decide, job_id, kind, body.approve, body.note, _user(request))
+
+
+# ── 검증 모드 · 운영 전환 ──────────────────────────────────────────────────────────
+
+class LiveIn(BaseModel):
+    live: bool
+
+
+@app.get("/api/shadow")
+def shadow_log(request: Request, limit: int = 200):
+    _user(request)
+    return {"live": shadow.live(), "writes": shadow.recent(min(limit, 1000)), "runtime": runtime.status}
+
+
+@app.post("/api/shadow/live")
+def shadow_set_live(body: LiveIn, request: Request):
+    u = _user(request)
+    if u.get("role") != "admin":
+        raise HTTPException(403, "관리자만 바꿀 수 있습니다")
+    app_settings.set("live_writes", "1" if body.live else "0", by=u["username"])
+    shadow.record("system", "운영 전환" if body.live else "검증 모드로", by=u["username"])
+    return {"live": shadow.live()}
 
 
 # ── 제품 · 메일 ─────────────────────────────────────────────────────────────────

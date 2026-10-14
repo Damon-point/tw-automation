@@ -1,0 +1,27 @@
+nicegui>=2.0
+sqlalchemy>=2.0
+bcrypt>=4.0
+cryptography>=42.0
+python-dotenv>=1.0
+openpyxl>=3.1
+xlrd>=2.0            # 구형 엑셀(.xls) 첨부에서 SN 추출 — openpyxl 은 BIFF 를 못 연다
+# Word 템플릿 채우기(RN·License 인증서) → PDF 변환. docx2pdf 는 Word COM 을 쓰므로
+# 서버에 Microsoft Word 가 설치돼 있어야 한다.
+docxtpl>=0.16
+docx2pdf>=0.1.8
+paramiko>=3.4
+dropbox>=12.0
+pymupdf>=1.26
+fpdf2>=2.8
+pypdf>=5.0
+anthropic>=0.116
+playwright>=1.55
+requests>=2.31
+pywin32>=306
+# Redmine 이슈 본문은 Textile 마크업이라 그대로 뿌리면 '*', '|_. |' 가 날것으로 보인다.
+# nh3(ammonia)는 변환 결과를 걸러 내는 데 쓴다(textile 이 의존성으로 함께 설치).
+textile>=4.0
+psycopg[binary]>=3.2   # FOTA Postgres 직접 연결
+# Lead time 을 업무일로 재려면 한국 공휴일이 필요하다. 설·추석·부처님오신날이 음력이라
+# 해마다 옮겨 다니고 대체·임시공휴일이 그때그때 생겨서 표를 직접 박아 넣을 수 없다.
+holidays>=0.60

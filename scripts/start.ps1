@@ -1,7 +1,7 @@
 # tw-next 를 콘솔 창 없이 띄운다 — API(8180, 이 PC 안에서만) + 화면(3080, 사내망).
 # 개발용 로그인(TWN_DEV_LOGIN_AS)은 여기서 켜지 않는다.
 $root = Split-Path -Parent $PSScriptRoot
-$py = "C:\Users\POINTMOBILE\dev\tw-automation\.venv\Scripts\python.exe"   # 기존 앱의 venv 를 빌려 쓴다(읽기만)
+$py = Join-Path $root "backend\.venv\Scripts\python.exe"   # 3080 전용 venv
 $logs = Join-Path $root "logs"
 New-Item -ItemType Directory -Force $logs | Out-Null
 

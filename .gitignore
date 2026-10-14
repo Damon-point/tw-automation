@@ -5,3 +5,11 @@ __pycache__/
 *.pyc
 *.log
 logs/
+backend/.env
+backend/.venv/
+backend/*.db
+backend/*.db-*
+backend/work/
+backend/logs/
+.venv/
+backend/sessions/
