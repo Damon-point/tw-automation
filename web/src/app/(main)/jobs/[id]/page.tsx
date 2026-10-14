@@ -3,48 +3,13 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Icon } from "@/components/Icons";
-import { Card, Empty, LegacyLink, Progress, ResultSummary, Skeleton, StatusChip, Tag, cx } from "@/components/ui";
-import { ago, skuText, useApi, type JobDetail, type JobSide, type JobStage } from "@/lib/api";
-
-function StageCard({ s, side, isNext }: { s: JobStage; side: string; isNext: boolean }) {
-  const n = {
-    done: "bg-ok text-white", review: "bg-warn text-white", running: "bg-info text-white", pending: "bg-muted-soft text-ink-2",
-  }[s.status] ?? "bg-muted-soft text-ink-2";
-  return (
-    <li id={`${side}-${s.key}`} className={cx("relative grid scroll-mt-6 grid-cols-[36px_1fr] gap-x-3 border-b border-line px-4 py-3.5 last:border-b-0",
-      isNext && "bg-brand-soft/40")}>
-      <span className={cx("mt-0.5 grid h-7 w-7 place-items-center rounded-full text-[12px] font-bold", n)}>
-        {s.status === "done" ? <Icon name="check" className="h-3.5 w-3.5" /> : s.summary.tone === "error" ? "!" : "•"}
-      </span>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={cx("font-bold", s.status === "pending" && "text-ink-2")}>{s.label}</span>
-          <StatusChip status={s.status} />
-          {s.summary.tone === "error" && <Tag tone="error">오류</Tag>}
-          {s.summary.tone === "warn" && s.status !== "pending" && <Tag tone="warn">경고</Tag>}
-          {isNext && <Tag tone="ok">다음 할 일</Tag>}
-          {s.updated_by && s.status !== "pending" && <span className="ml-auto text-[12px] text-ink-3">{s.updated_by} · {ago(s.updated_at)}</span>}
-        </div>
-        {s.blocked && <div className="mt-1 text-[12.5px] text-ink-3">⏸ {s.blocked}</div>}
-        {s.summary.headline && s.status !== "pending" && <div className="mt-1 truncate text-[12.5px] text-ink-2" title={s.summary.headline}>{s.summary.headline}</div>}
-        {s.status !== "pending" && <ResultSummary summary={s.summary} raw={s.result} />}
-      </div>
-    </li>
-  );
-}
-
-function SideLane({ side }: { side: JobSide }) {
-  return (
-    <Card pad={false} title={side.title} right={
-      <div className="flex w-[150px] items-center gap-2">
-        <span className="whitespace-nowrap text-[12px] text-ink-3">{side.done}/{side.total}</span>
-        <Progress done={side.done} total={side.total} />
-      </div>
-    }>
-      <ol>{side.stages.map((s) => <StageCard key={s.key} s={s} side={side.side} isNext={side.next === s.key} />)}</ol>
-    </Card>
-  );
-}
+import { Card, Empty, Progress, Skeleton, Tag, cx } from "@/components/ui";
+import { ago, skuText, useApi } from "@/lib/api";
+import { rnLocked, type JobX, type ProgressInfo } from "@/lib/job";
+import { Lane } from "@/components/job/Lane";
+import { ReviewsCard } from "@/components/job/Reviews";
+import { InputsCard } from "@/components/job/Inputs";
+import { ToastHost } from "@/components/job/kit";
 
 function Check({ ok, label, note }: { ok: boolean; label: string; note?: string }) {
   return (
@@ -61,9 +26,17 @@ function Check({ ok, label, note }: { ok: boolean; label: string; note?: string 
 const DECISION: Record<string, string> = { requested: "요청됨", approved: "승인", rejected: "반려" };
 
 export default function JobPage() {
+  return <ToastHost><JobView /></ToastHost>;
+}
+
+const isRunning = (d: JobX | null) => !!d?.sides.some((s) => s.stages.some((x) => x.status === "running"));
+
+function JobView() {
   const { id } = useParams<{ id: string }>();
-  const { data, loading, error } = useApi<JobDetail>(`/api/jobs/${id}`, (d) =>
-    d?.sides.some((s) => s.stages.some((x) => x.status === "running")) ? 4000 : 30000);
+  const { data, loading, error, reload } = useApi<JobX>(`/api/jobs/${id}`, (d) => isRunning(d) ? 3000 : 20000);
+  const running = isRunning(data);
+  const prog = useApi<Record<string, ProgressInfo>>(running ? `/api/jobs/${id}/progress` : null, running ? 1500 : undefined);
+  const progress = (running && prog.data) || data?.progress || {};
 
   if (error) return <div className="rounded-lg bg-err-soft px-4 py-3 text-sm text-err">{error}</div>;
   if (loading || !data) return <Skeleton rows={6} />;
@@ -84,7 +57,6 @@ export default function JobPage() {
             <div className="mb-1 flex justify-between text-[12px] text-ink-2"><span>{done} / {total} 단계</span><span>{total ? Math.round((done * 100) / total) : 0}%</span></div>
             <Progress done={done} total={total} />
           </div>
-          <LegacyLink href={data.legacy.osupdate}>실행 · 검수는 기존 화면에서</LegacyLink>
         </div>
       </div>
 
@@ -106,9 +78,13 @@ export default function JobPage() {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
-          {data.sides.map((s) => <SideLane key={s.side} side={s} />)}
+          {[...data.sides].sort((a, b) => (a.done === a.total ? 1 : 0) - (b.done === b.total ? 1 : 0)).map((s) => (
+            <Lane key={s.side} side={s} ctx={{ job: data, reload, progress, locked: rnLocked(data) }} />
+          ))}
         </div>
         <div className="space-y-5">
+          <ReviewsCard job={data} reload={reload} />
+          <InputsCard jobId={data.job.id} onSaved={reload} />
           <Card title="Release Note 체크" icon={<Icon name="file" />}>
             <ul>
               <Check ok={data.rn.mid === "approved"} label="1차 RN 승인" note={DECISION[data.rn.mid] ?? (data.rn.mid || "아직")} />

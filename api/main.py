@@ -350,7 +350,7 @@ def job_detail(job_id: int, request: Request):
                 "created_at": _iso(j.get("created_at"))},
         "sides": sides, "facts": facts, "uploads": uploads, "rn": rn, "artifacts": artifacts, "basis": basis,
         "reviews": R.state_of(job_id), "progress": A.progress_of(job_id),
-        "can_decide": {k: R.can_decide(k, _user(request)) for k in R.KINDS},
+        "can_decide": {k: R.can_decide(k, request.session.get("user") or {}) for k in R.KINDS},
         "legacy": {"osupdate": f"{LEGACY_URL}/osupdate", "newtasks": f"{LEGACY_URL}/newtasks",
                    "reviews": f"{LEGACY_URL}/reviews", "final_reviews": f"{LEGACY_URL}/final-reviews"},
     }
@@ -568,6 +568,24 @@ def files(path: str, request: Request):
     if not _inside(path) or not Path(path).is_file():
         raise HTTPException(404, "허용되지 않은 경로")
     return FileResponse(path)
+
+
+# ── 영역별 라우터(api/routers/*.py) ─────────────────────────────────────────────────
+
+def _include_routers() -> None:
+    import importlib
+    import pkgutil
+
+    import routers
+
+    for m in sorted(pkgutil.iter_modules(routers.__path__), key=lambda m: m.name):
+        mod = importlib.import_module(f"routers.{m.name}")
+        r = getattr(mod, "router", None)
+        if r is not None:
+            app.include_router(r)
+
+
+_include_routers()
 
 
 @app.exception_handler(HTTPException)

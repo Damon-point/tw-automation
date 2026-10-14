@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icons";
 import { Card, Empty, PageHead, Skeleton, Tag } from "@/components/ui";
@@ -34,7 +35,7 @@ export default function MailPage() {
         {loading ? <Skeleton rows={8} /> : data?.mail.length ? data.mail.map((m) => {
           const k = kindOf(m.subject);
           return (
-            <div key={m.id} className="border-b border-line px-5 py-3 last:border-b-0">
+            <Link key={m.id} href={`/mail/${m.id}`} className="block border-b border-line px-5 py-3 last:border-b-0 hover:bg-surface-2">
               <div className="flex flex-wrap items-center gap-2">
                 {k && <Tag tone={k.tone}>{k.label}</Tag>}
                 <span className="min-w-0 flex-1 truncate font-semibold" title={m.subject}>{m.subject || "(제목 없음)"}</span>
@@ -45,7 +46,7 @@ export default function MailPage() {
                 {m.attachments.length > 0 && <span>· 첨부 {m.attachments.length}</span>}
               </div>
               {m.snippet && <div className="mt-1 line-clamp-1 text-[12.5px] text-ink-2">{m.snippet}</div>}
-            </div>
+            </Link>
           );
         }) : <Empty>{q ? `'${q}' 에 맞는 메일이 없습니다` : "메일이 없습니다"}</Empty>}
       </Card>

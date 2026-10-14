@@ -9,8 +9,12 @@ import { cx } from "./ui";
 const NAV = [
   { href: "/", label: "오늘 할 일", icon: "home", count: (h?: Home | null) => h ? h.counts.approvals + h.counts.failed + h.counts.review : 0, hot: true },
   { href: "/rounds", label: "OS Update", icon: "rounds", count: (h?: Home | null) => h?.counts.new_rounds ?? 0, hot: true },
+  { href: "/whitelist", label: "WhiteList · DQA", icon: "shield" },
+  { href: "/license", label: "PMDM License", icon: "key" },
+  { href: "/issues", label: "Solution Buffer", icon: "bug" },
   { href: "/mail", label: "메일", icon: "inbox" },
   { href: "/products", label: "제품 관리", icon: "box" },
+  { href: "/settings", label: "설정", icon: "gear" },
 ];
 
 const ROLE: Record<string, string> = { admin: "관리자", user: "작성자", mid_reviewer: "RN 승인자", final_reviewer: "최종 승인자" };
@@ -71,6 +75,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <main className="min-w-0">
+        {me.data && !me.data.live && (
+          <Link href="/settings/shadow" className="block border-b border-[#f2d49b] bg-[#fff7e6] px-4 py-2 text-[13px] text-[#8a5a00] lg:px-8 dark:border-[#5a4310] dark:bg-[#2a2210] dark:text-[#f0c36a]">
+            <b>검증 모드</b> — 메일·Dropbox·FOTA·Portal·Confluence 에 실제로 쓰지 않고 기록만 합니다. 기록 보기 →
+          </Link>
+        )}
         <div className="mx-auto w-full max-w-[1280px] px-4 py-7 lg:px-8">{children}</div>
       </main>
     </div>
