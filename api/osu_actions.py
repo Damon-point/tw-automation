@@ -587,3 +587,49 @@ def save_exclude_note(job_id: int, no: str, value: str) -> dict:
         raise ActionError("그 번호의 행이 없습니다")
     update_state(key, rn_select_rows=saved)
     return {"ok": True}
+
+
+def reviewer_save(job_id: int, rows: list[dict], user: dict, inputs: list[dict] | None = None) -> dict:
+    """RN 승인(1차) 결재자의 '저장 · RN 재생성' — 기존 RN 승인 화면(mid_review.do_regen)과 같은 순서.
+
+    결재가 '요청됨' 인 동안에만 쓴다(save_selection 은 그때 잠긴다). 결재 상태는 바꾸지 않고,
+    이 단계가 확정하는 **전체 이력본만** 다시 만든다(RN for Sales 는 다음 단계).
+    """
+    from app.pipeline import history as H
+    from app.pipeline.rn_research import korean_lines, rebuild_revision_from_selection, regenerate_rn
+    from app.pipeline.rn_select import normalize_rows
+
+    if user.get("role") not in ("mid_reviewer", "admin"):
+        raise ActionError("RN 승인자만 고칠 수 있습니다")
+    key = J.state_key(job_id)
+    if ((get_state(key) or {}).get("rn_mid_review") or {}).get("status") != "requested":
+        raise ActionError("RN 승인이 요청된 상태가 아니라 고칠 수 없습니다")
+    new_rows = []
+    for r in rows:
+        r2 = dict(r)
+        r2["apply_note"] = str(r2.get("apply_note") or "").strip()
+        if r2.get("manual"):
+            r2["include"] = "Y"
+            r2["issue"] = r2["apply_note"]
+            if not r2["apply_note"]:
+                continue
+        else:
+            r2["include"] = "Y" if str(r2.get("include")) == "Y" else "X"
+        new_rows.append(r2)
+    new_rows = normalize_rows(new_rows)
+    if inputs is not None:
+        _apply_inputs(key, get_state(key) or {}, inputs)
+    update_state(key, rn_select_rows=new_rows, rn_select_edited_at=datetime.now().isoformat(),
+                 rn_select_edited_by=user["username"])
+    lines, note = rebuild_revision_from_selection(key)
+    if note:
+        lines = list((get_state(key) or {}).get("rn_revision_lines") or [])
+    _path, err = regenerate_rn(key, "\n".join(f"- {ln}" for ln in lines), with_sales=False)
+    if err:
+        raise ActionError(f"RN 을 다시 만들지 못했습니다 — {err}")
+    H.record(key, "rn", "RN 승인 재생성", actor=user["username"],
+             summary="선별표·입력값 수정 후 재생성", text=H.text_from_rn(get_state(key) or {}))
+    ko = korean_lines(lines)
+    return {"ok": True, "lines": len(lines), "korean": ko[:5],
+            "message": f"저장하고 전체 이력 RN 을 다시 만들었습니다 — 반영 {len(lines)}줄"
+                       + (f" · 한국어 남은 줄 {len(ko)}개" if ko else "")}

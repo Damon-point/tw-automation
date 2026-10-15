@@ -136,7 +136,7 @@ def _open_requests() -> dict[str, dict]:
                            "product": st.get("product") or j.get("product") or "",
                            "version": st.get("version_full") or st.get("os_version") or j.get("version") or "",
                            "requested_by": rv.get("requester_name", ""), "requested_at": _aware(rv["requested_at"]),
-                           "summary": _summary(st, kind)},
+                           "summary": {**_summary(st, kind), **_selection(j["id"], kind)}},
                 "docs": _docs(st, kind),
             }
     return out
@@ -148,6 +148,17 @@ def _summary(st: dict, kind: str) -> dict:
         ("Android", st.get("android")), ("보안 패치", st.get("security_patch"))) if v]
     rev = [str(x) for x in (st.get("rn_revision_lines") or []) if str(x).strip()]
     return {"lines": lines, "revision": rev[:200]}
+
+
+def _selection(job_id: int, kind: str) -> dict:
+    """RN 결재의 공개 선별표 · 입력값 — 1차는 웹에서 고치고, 최종 검수는 읽기만 한다."""
+    if kind not in ("mid", "final"):
+        return {}
+    import osu_actions as A
+
+    sel = A.selection(job_id)
+    return {"selection": {"rows": sel["rows"], "inputs": sel["inputs"], "exclude_notes": sel["exclude_notes"],
+                          "edited_at": sel["edited_at"], "edited_by": sel["edited_by"], "editable": kind == "mid"}}
 
 
 def _docs(st: dict, kind: str) -> list[dict]:
@@ -225,6 +236,27 @@ def _apply(d: dict) -> dict:
     return {"id": d["id"], "ok": True, "message": msg}
 
 
+def _apply_edit(e: dict) -> dict:
+    """웹에서 저장한 선별표 · 입력값 하나를 3080 에 반영(전체 이력 RN 재생성) → ack 본문."""
+    if e["source_key"].startswith("test:"):
+        return {"id": e["id"], "ok": True, "echo": True, "message": "시험 건 — 화면에만 반영, RN 은 다시 만들지 않음"}
+    import osu_actions as A
+
+    job_id, kind, at = _parse_key(e["source_key"])
+    rv = (get_states([J.state_key(job_id)]).get(J.state_key(job_id)) or {}).get(R.KINDS[kind]["state_key"]) or {}
+    if kind != "mid" or rv.get("status") != "requested" or rv.get("requested_at") != at:
+        return {"id": e["id"], "ok": False, "message": "3080 에서 이미 결정됐거나 다시 요청된 건이라 반영하지 않음"}
+    user = _user_dict(e["by"])
+    if not user:
+        return {"id": e["id"], "ok": False, "message": f"3080 에 {e['by']} 계정이 없습니다"}
+    try:
+        with R._DECIDE_LOCK:
+            res = A.reviewer_save(job_id, e.get("rows") or [], user, e.get("inputs"))
+    except A.ActionError as ex:
+        return {"id": e["id"], "ok": False, "message": str(ex)}
+    return {"id": e["id"], "ok": True, "message": res.get("message", "")}
+
+
 # ── 한 바퀴 ──────────────────────────────────────────────────────────────────
 
 def sync_once() -> dict:
@@ -244,7 +276,18 @@ def _sync() -> dict:
     errors: list[str] = []
     stat = {"pushed": 0, "uploaded": 0, "applied": 0, "closed": 0}
 
-    # ③ 먼저 — 결정이 이미 내려졌으면 문서를 다시 올릴 까닭이 없다
+    # 선별표 저장이 먼저 — 결정은 고친 문서를 보고 내린 것이다(웹은 저장 반영 전에는 결정을 막는다)
+    for e in _call("GET", "/api/sync/edits").get("edits", []):
+        try:
+            ack = _apply_edit(e)
+        except Exception as ex:  # noqa: BLE001
+            ack = {"id": e["id"], "ok": False, "message": f"반영 중 오류 — {ex}"[:500]}
+        _call("POST", "/api/sync/edit-ack", ack)
+        stat["edits"] = stat.get("edits", 0) + 1
+        if not ack["ok"]:
+            errors.append(f"{e['source_key']} 선별표: {ack['message']}")
+
+    # ③ 결정 — 결정이 이미 내려졌으면 문서를 다시 올릴 까닭이 없다
     for d in _call("GET", "/api/sync/decisions").get("decisions", []):
         try:
             ack = _apply(d)
