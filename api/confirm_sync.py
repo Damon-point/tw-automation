@@ -150,8 +150,23 @@ def _summary(st: dict, kind: str) -> dict:
     return {"lines": lines, "revision": rev[:200]}
 
 
+def _newsletter(job_id: int) -> dict:
+    """뉴스레터 결재 — 결재자가 한눈에 보도록 메일 제목 · 카드(EN/KR)를 읽기 전용으로 싣는다."""
+    from app.pipeline import newsletter_ws as NLWS
+
+    d = NLWS.get(J.state_key(job_id)) or {}
+    if not d:
+        return {}
+    keep = ("topic", "title_en", "body_en", "title_ko", "body_ko")
+    return {"newsletter": {"subject": d.get("subject", ""), "product": d.get("product_disp", ""),
+                           "os_version": d.get("os_version_disp", ""),
+                           "cards": [{k: str(c.get(k) or "") for k in keep} for c in d.get("cards") or []]}}
+
+
 def _selection(job_id: int, kind: str) -> dict:
     """RN 결재의 공개 선별표 · 입력값 — 1차는 웹에서 고치고, 최종 검수는 읽기만 한다."""
+    if kind == "newsletter":
+        return _newsletter(job_id)
     if kind not in ("mid", "final"):
         return {}
     import osu_actions as A
