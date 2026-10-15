@@ -200,6 +200,9 @@ def _user_dict(username: str) -> dict | None:
 
 def _apply(d: dict) -> dict:
     """웹 결정 하나를 3080 에서 처리 → ack 본문."""
+    if d["source_key"].startswith("test:"):
+        # 웹 화면 점검용 시험 건 — 3080 작업이 없다. 결정만 받았다고 알리고 아무것도 바꾸지 않는다.
+        return {"id": d["id"], "ok": True, "message": "시험 건 — 3080 에는 반영하지 않음"}
     job_id, kind, at = _parse_key(d["source_key"])
     spec = R.KINDS[kind]
     st = (get_states([J.state_key(job_id)]).get(J.state_key(job_id)) or {})
