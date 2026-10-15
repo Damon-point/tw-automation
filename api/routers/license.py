@@ -387,6 +387,13 @@ def _cert_bytes(r: LicenseRequest) -> tuple[bytes | None, str]:
 def approve(doc_id: str, body: NoteIn, request: Request):
     """승인 — 키(없으면 생성) → 공개키 재검증(불일치면 멈춤) → 승인 → 인증서 → 결과 메일."""
     u = _need_admin(request)
+    return {**decide_approve(doc_id, body.note or "", u), "detail": _detail(service.get(doc_id), u)}
+
+
+def decide_approve(doc_id: str, note: str, u: dict) -> dict:
+    """승인 본문 — 화면(위)과 검수 웹 동기화(confirm_sync)가 같이 쓴다. u: {id, username} 결재 권한자."""
+    if not _admin_ok(u):
+        raise HTTPException(403, "License 결재 권한이 없습니다")
     r = _get(doc_id)
     _pending(r)
     steps: list[dict] = []
@@ -398,7 +405,7 @@ def approve(doc_id: str, body: NoteIn, request: Request):
     if not v or not v["ok"]:
         raise HTTPException(409, "License Key 의 ID·수량이 신청과 다릅니다 — 키를 다시 만드세요")
     steps.append({"step": "verify", "ok": True, "msg": f"공개키 검증 · ID {v['id']} · {v['count']}대"})
-    r = service.set_status(doc_id, service.STATUS_APPROVED, body.note or "", u.get("username", ""))
+    r = service.set_status(doc_id, service.STATUS_APPROVED, note or "", u.get("username", ""))
     steps.append({"step": "status", "ok": True, "msg": "승인"})
     pdf, err = _cert_bytes(r)
     if pdf is None:
@@ -409,22 +416,29 @@ def approve(doc_id: str, body: NoteIn, request: Request):
         res = _send_result(service.get(doc_id), "approval", pdf, u)
         steps.append({"step": "mail", "ok": res["ok"],
                       "msg": (f"결과 메일 → {res.get('to', '')}" if res["ok"] else f"결과 메일 실패 — {res['error']}")})
-    return {"steps": steps, "detail": _detail(service.get(doc_id), u)}
+    return {"steps": steps}
 
 
 @router.post("/requests/{doc_id}/reject")
 def reject(doc_id: str, body: NoteIn, request: Request):
     u = _need_admin(request)
+    return {**decide_reject(doc_id, body.note or "", u), "detail": _detail(service.get(doc_id), u)}
+
+
+def decide_reject(doc_id: str, note: str, u: dict) -> dict:
+    """반려 본문 — 화면(위)과 검수 웹 동기화(confirm_sync)가 같이 쓴다."""
+    if not _admin_ok(u):
+        raise HTTPException(403, "License 결재 권한이 없습니다")
     r = _get(doc_id)
     _pending(r)
-    if not (body.note or "").strip():
+    if not (note or "").strip():
         raise HTTPException(400, "반려 사유를 적으세요")
-    r = service.set_status(doc_id, service.STATUS_REJECTED, body.note.strip(), u.get("username", ""))
+    r = service.set_status(doc_id, service.STATUS_REJECTED, note.strip(), u.get("username", ""))
     res = _send_result(r, "rejection", None, u)
     steps = [{"step": "status", "ok": True, "msg": "반려"},
              {"step": "mail", "ok": res["ok"],
               "msg": (f"반려 메일 → {res.get('to', '')}" if res["ok"] else f"반려 메일 실패 — {res['error']}")}]
-    return {"steps": steps, "detail": _detail(service.get(doc_id), u)}
+    return {"steps": steps}
 
 
 @router.post("/requests/{doc_id}/cert")

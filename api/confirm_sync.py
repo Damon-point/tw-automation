@@ -139,7 +139,82 @@ def _open_requests() -> dict[str, dict]:
                            "summary": {**_summary(st, kind), **_selection(j["id"], kind)}},
                 "docs": _docs(st, kind),
             }
+    out.update(_license_requests())
     return out
+
+
+# ── License 검수 — PMDM License Key 발급 요청(최종 승인자 · 관리자) ─────────────────
+
+_PO_MIME = {".pdf": MIME_PDF, ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".doc": "application/msword", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".xls": "application/vnd.ms-excel"}
+
+
+def _license_requests() -> dict[str, dict]:
+    """'대기중' 인 License 발급 요청 — source_key 는 license:{doc_id}(반려 뒤 다시 신청하면 새 doc_id)."""
+    from app.license import service as LS
+
+    out: dict[str, dict] = {}
+    for r in LS.list_all():
+        if r.status != LS.STATUS_PENDING:
+            continue
+        key = f"license:{r.doc_id}"
+        out[key] = {
+            "review": {"source_key": key, "job_id": r.id, "kind": "license",
+                       "product": r.company_name or "", "version": f"{LS.norm_qty(r.quantity) or r.quantity}대",
+                       "requested_by": r.created_by_name or "",
+                       "requested_at": _aware(r.created_at.isoformat()) if r.created_at else None,
+                       "summary": {"license": license_info(r)}},
+            "docs": license_docs(r),
+        }
+    return out
+
+
+def license_docs(r) -> list[dict]:
+    """PO 파일 — 원본 그대로(PDF 로 바꾸지 않는다)."""
+    if not (r.po_path and os.path.exists(r.po_path)):
+        return []
+    ext = Path(r.po_filename or r.po_path).suffix.lower()
+    if ext not in _PO_MIME:
+        return []
+    return [{"name": r.po_filename or Path(r.po_path).name, "label": "PO", "mime": _PO_MIME[ext],
+             "path": r.po_path, "raw": True}]
+
+
+def license_info(r) -> dict:
+    from app.license import service as LS
+
+    return {"doc_id": r.doc_id, "date_issued": r.date_issued or "", "company_name": r.company_name or "",
+            "quantity": LS.norm_qty(r.quantity) or str(r.quantity or ""), "license_user_id": r.license_user_id or "",
+            "contact_name": r.contact_name or "", "contact_email": r.contact_email or "",
+            "recipient_email": r.recipient_email or "", "recovery_email": r.recovery_email or "",
+            "part_number": r.part_number or "", "type": r.type or "", "note": r.note or "",
+            "requested_by": r.created_by_name or "", "po_name": r.po_filename or ""}
+
+
+def _apply_license(d: dict) -> dict:
+    """웹 결정 하나를 3080 License 결재로 — 화면의 승인/반려와 같은 함수(키 · 검증 · 인증서 · 결과 메일)."""
+    from fastapi import HTTPException
+    from app.license import service as LS
+    from routers import license as LR
+
+    doc_id = d["source_key"].split(":", 1)[1]
+    r = LS.get(doc_id)
+    if not r or r.status != LS.STATUS_PENDING:
+        now = {LS.STATUS_APPROVED: "승인", LS.STATUS_REJECTED: "반려"}.get(r.status if r else "", "삭제")
+        who = (r.confirm_by or "") if r else ""
+        return {"id": d["id"], "ok": False, "superseded": True,
+                "message": f"3080 에서 먼저 {now}{' — ' + who if who else ''} · 웹 결정은 반영하지 않음"}
+    user = _user_dict(d["decided_by"])
+    if not user:
+        return {"id": d["id"], "ok": False, "message": f"3080 에 {d['decided_by']} 계정이 없습니다"}
+    try:
+        with R._DECIDE_LOCK:
+            res = (LR.decide_approve if d["status"] == "approved" else LR.decide_reject)(doc_id, d.get("note") or "", user)
+    except HTTPException as e:
+        return {"id": d["id"], "ok": False, "message": str(e.detail)}
+    return {"id": d["id"], "ok": True, "message": " · ".join(s["msg"] for s in res.get("steps") or [])}
 
 
 def _summary(st: dict, kind: str) -> dict:
@@ -199,7 +274,7 @@ def _fingerprint(path: str) -> str:
 
 
 def _bytes_of(doc: dict) -> bytes:
-    if doc["mime"] != MIME_PDF:
+    if doc.get("raw") or doc["mime"] != MIME_PDF:
         return Path(doc["path"]).read_bytes()
     # docx → PDF 는 Word 로 돌려 느리다 — 같은 파일이면 한 번만
     PDF_CACHE.mkdir(parents=True, exist_ok=True)
@@ -226,6 +301,8 @@ def _user_dict(username: str) -> dict | None:
 
 def _apply(d: dict) -> dict:
     """웹 결정 하나를 3080 에서 처리 → ack 본문."""
+    if d["source_key"].startswith("license:"):
+        return _apply_license(d)
     if d["source_key"].startswith("test:"):
         # 웹 화면 점검용 시험 건 — 3080 작업이 없다. 결정만 받았다고 알리고 아무것도 바꾸지 않는다.
         return {"id": d["id"], "ok": True, "message": "시험 건 — 3080 에는 반영하지 않음"}
@@ -318,6 +395,15 @@ def _sync() -> dict:
     closed = []
     for key in list(known):
         if key in reqs:
+            continue
+        if key.startswith("license:"):
+            from app.license import service as LS
+
+            r = LS.get(key.split(":", 1)[1])
+            st_ = {LS.STATUS_APPROVED: "approved", LS.STATUS_REJECTED: "rejected"}.get(r.status if r else "", "cancelled")
+            closed.append({"source_key": key, "status": st_, "decided_by": (r.confirm_by or "") if r else "",
+                           "decided_at": _aware(r.confirm_date) if r and r.confirm_date else None,
+                           "note": (r.admin_note or "") if r else ""})
             continue
         job_id, kind, at = _parse_key(key)
         if states is None:
