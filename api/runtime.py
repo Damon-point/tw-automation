@@ -99,4 +99,10 @@ def start() -> None:
         license_inbox.scan()
 
     _loop("license_inbox", 120, 40, license_scan)
+
+    import confirm_sync
+
+    if confirm_sync.enabled():
+        # 검수 웹(tw-automation-confirm) — 이 PC 에서 바깥으로만 나간다
+        _loop("confirm_sync", 30, 20, confirm_sync.sync_once)
     _log("[3080] 백그라운드 시작 — 메일 동기화·알림·WhiteList·License 메일")

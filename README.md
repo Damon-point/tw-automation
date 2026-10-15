@@ -67,3 +67,9 @@ powershell -ExecutionPolicy Bypass -File scripts\start.ps1
 - API 는 `127.0.0.1:8180` 에만 열린다. 설정은 `.env`(`TWN_SECRET` 세션 서명 열쇠, `TWN_LEGACY_URL`).
 - 개발용 로그인 `TWN_DEV_LOGIN_AS` 는 화면 확인용이다. 이 PC 에서 API 로 직접 보낸 요청만 받고,
   화면 서버를 거친 요청은 거부한다. 운영 실행(`start.ps1`)에서는 켜지 않는다.
+
+## 검수 웹 동기화 (tw-automation-confirm)
+
+결재(RN 1차 · 최종 검수 · 뉴스레터)를 바깥 웹에서도 결정하도록 `api/confirm_sync.py` 가 30초마다 검수 웹과 주고받는다 — 이 PC 에서 바깥으로만 나간다.
+`backend/.env` 에 `TWN_CONFIRM_URL` · `TWN_CONFIRM_TOKEN` 이 둘 다 있을 때만 돈다. `TWN_CONFIRM_PUBLIC_URL` 이 있으면 결재 요청 메일에 웹 주소 줄을 넣는다.
+로컬 기록은 `backend/work/confirm_sync.json`, 변환한 PDF 는 `backend/work/confirm_sync/`.

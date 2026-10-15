@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import threading
 from datetime import datetime
 
 from app import mail_templates as MT
@@ -33,6 +34,10 @@ KINDS = {
 
 class ReviewError(Exception):
     pass
+
+
+#: 3080 화면의 결정과 검수 웹에서 내려온 결정이 같은 요청에 동시에 들어오지 않게
+_DECIDE_LOCK = threading.Lock()
 
 
 def _eul(word: str) -> str:
@@ -76,7 +81,7 @@ def request(job_id: int, kind: str, user: dict) -> dict:
     subject, body = MT.render(
         "review_request", 요청종류=spec["verb"], 제품=product, 버전=version, 대상=spec["label"],
         요청자=user["username"], 조사=_eul(spec["verb"]),
-        안내=f"▶ 앱에 로그인해 해당 작업의 {spec['label']} 결재 화면에서 확인 후 결정을 부탁드립니다.")
+        안내=f"▶ 앱에 로그인해 해당 작업의 {spec['label']} 결재 화면에서 확인 후 결정을 부탁드립니다." + _web_line())
     ok, err = user_mailer.send_as_user(user["id"], to, subject.strip(), body)
     if not ok:
         raise ReviewError(f"요청 메일 발송 실패: {err}")
@@ -86,11 +91,21 @@ def request(job_id: int, kind: str, user: dict) -> dict:
     return {"ok": True, "message": f"{spec['role']} {len(to)}명에게 {spec['verb']} 요청을 보냈습니다"}
 
 
+def _web_line() -> str:
+    url = (os.getenv("TWN_CONFIRM_PUBLIC_URL") or "").strip().rstrip("/")
+    return f"\n▶ 웹 검수: {url}/" if url else ""
+
+
 def can_decide(kind: str, user: dict) -> bool:
     return user.get("role") in KINDS[kind]["roles"]
 
 
 def decide(job_id: int, kind: str, approve: bool, note: str, user: dict) -> dict:
+    with _DECIDE_LOCK:
+        return _decide(job_id, kind, approve, note, user)
+
+
+def _decide(job_id: int, kind: str, approve: bool, note: str, user: dict) -> dict:
     spec = KINDS.get(kind)
     if not spec:
         raise ReviewError("모르는 결재 종류")
