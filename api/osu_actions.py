@@ -615,6 +615,9 @@ def reviewer_save(job_id: int, rows: list[dict], user: dict, inputs: list[dict] 
                 continue
         else:
             r2["include"] = "Y" if str(r2.get("include")) == "Y" else "X"
+        # 미반영 사유(비고) — 정해진 것만, 반영 행은 비운다(기존 편집기와 같다)
+        en = str(r2.get("exclude_note") or "")
+        r2["exclude_note"] = en if r2["include"] == "X" and en in EXCLUDE_NOTES else ""
         new_rows.append(r2)
     new_rows = normalize_rows(new_rows)
     if inputs is not None:
