@@ -63,7 +63,9 @@ app = FastAPI(title="tw-automation-v2 api", docs_url=None, redoc_url=None, lifes
 async def _area_of_request(request: Request, call_next):
     """영역 표시 — 운영 중인 영역(live_areas)의 외부 쓰기만 검증 모드를 지나간다(app.shadow)."""
     p = request.url.path
-    name = "whitelist" if p.startswith("/api/whitelist") else "license" if p.startswith("/api/license") else ""
+    # WhiteList 라우터는 /api/wl (DQA 포함) — 2026-10-16 /api/whitelist 만 보고 있어 등록이 검증 모드에 막혔다
+    name = ("whitelist" if p.startswith(("/api/wl/", "/api/wl?", "/api/whitelist")) or p == "/api/wl"
+            else "license" if p.startswith("/api/license") else "")
     if not name:
         return await call_next(request)
     with shadow.area(name):
