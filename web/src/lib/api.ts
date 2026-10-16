@@ -92,7 +92,7 @@ export type RoundCard = {
 };
 export type Home = {
   user: Me;
-  counts: { review: number; failed: number; running: number; approvals: number; new_rounds: number; license_mail?: number };
+  counts: { review: number; failed: number; running: number; approvals: number; new_rounds: number; license_mail?: number; whitelist?: number };
   review: StageItem[]; failed: StageItem[]; running: StageItem[]; approvals: Approval[]; new_rounds: RoundCard[];
 };
 export type JobStage = {

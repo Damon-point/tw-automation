@@ -248,12 +248,19 @@ def home(request: Request):
         lic_new = license_inbox.open_count()
     except Exception:  # noqa: BLE001
         lic_new = 0
+    try:
+        # WhiteList 미처리 스레드 — WhiteList 목록의 '열린 것' 과 같은 기준(처리 완료 · 작업 아님 제외), 20초 캐시를 쓴다
+        from routers import whitelist as WLR
+
+        wl_open = sum(1 for g in WLR._all_groups() if not g.get("done") and not g.get("notwl"))
+    except Exception:  # noqa: BLE001
+        wl_open = 0
     key = lambda x: x.get("updated_at", "")  # noqa: E731
     return {
         "user": u,
         "counts": {"review": len(review), "failed": len(failed), "running": len(running),
                    "approvals": len(approvals), "new_rounds": len(new_rounds),
-                   "license_mail": lic_new},
+                   "license_mail": lic_new, "whitelist": wl_open},
         "review": sorted(review, key=key, reverse=True)[:30],
         "failed": sorted(failed, key=key, reverse=True)[:30],
         "running": running,
