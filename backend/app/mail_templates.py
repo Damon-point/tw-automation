@@ -65,99 +65,86 @@ def _add(t: Tpl) -> None:
 _AUTO_NOTE = "이 메일은 TW Automation 이 자동 발송했습니다."
 
 # ── WhiteList ────────────────────────────────────────────────────────────────
+# 실제로 보낸 회신(2026-08~10, 메일함)을 따랐다 — 요청 스레드에 'RE:' 로 답하고, 인사 다음 줄에 호칭,
+# S/N 은 'SN: a, b' 한 줄, 끝은 '업무에 참조 부탁드립니다.' (2026-10-16)
 _add(Tpl(
     key="wl_reply_done_ko", title="WhiteList 등록 완료 회신 (한국어)", group="WhiteList",
     when="[WhiteList] 처리 화면에서 회신을 만들 때", to="요청하신 분",
-    subject="[White List] 등록 완료 안내 — {{대수}}대",
+    subject="RE: {{원본제목}}",
     body=(
-        "안녕하세요{{호칭}}.\n"
+        "안녕하세요.\n"
         "\n"
-        "요청하신 아래 {{대수}}대 단말을 FOTA 화이트리스트에 등록하였습니다.\n"
-        "등록이 반영되기까지 잠시 시간이 걸릴 수 있으며, 그 이후 해당 단말에서\n"
-        "OS 업데이트를 받으실 수 있습니다.\n"
-        "\n"
-        "[등록 단말]\n"
+        "{{호칭줄}}"
+        "요청하신 아래 SN에 대하여 FOTA 서버 등록 완료하였습니다.\n"
         "{{단말목록}}\n"
         "\n"
-        "단말에서 업데이트가 확인되지 않으면 인터넷 연결 상태를 확인하신 뒤\n"
-        "잠시 후 다시 시도해 주시기 바랍니다. 계속 확인되지 않거나 등록 내용에\n"
-        "수정이 필요하시면 이 메일로 회신해 주시기 바랍니다.\n"
-        "\n"
+        "업무에 참조 부탁드립니다.\n"
         "감사합니다."
     ),
-    vars={"호칭": "이름 부분 — ', 홍길동님' (이름이 없으면 비어 있음)",
+    vars={"원본제목": "요청 메일 제목(RE: 는 겹쳐 붙지 않는다)",
+          "호칭줄": "'염서연 대리님' 한 줄 + 빈 줄 — 그분께 직접 보낸 회신에서 배운 호칭, 없으면 '이름님'",
+          "호칭": "이름 부분 — ', 홍길동님' (예전 문구용)",
           "대수": "단말 수 — '3'",
-          "단말목록": "'1. SN: ...' 줄들"},
+          "단말목록": "'SN: 2032210078, 2329110473' (많으면 10개씩 줄바꿈)"},
 ))
 
 _add(Tpl(
     key="wl_reply_done_en", title="WhiteList 등록 완료 회신 (영문)", group="WhiteList",
     when="요청 메일이 영문일 때", to="요청하신 분",
-    subject="[White List] Registration completed — {{대수}} device(s)",
+    subject="RE: {{원본제목}}",
     body=(
         "Hello{{호칭}},\n"
         "\n"
-        "The following {{대수}} device(s) have been registered on the FOTA white list.\n"
-        "It may take a short while for the registration to take effect. After that,\n"
-        "the devices will be able to receive the OS update.\n"
-        "\n"
-        "[Devices]\n"
+        "The following device(s) have been registered on the FOTA server.\n"
         "{{단말목록}}\n"
         "\n"
-        "If the update does not appear, please check the network connection and try\n"
-        "again after a short while. If it still does not appear, or if the registered\n"
-        "details need to be corrected, please reply to this email.\n"
-        "\n"
-        "Best regards,"
+        "Please refer to this for your work.\n"
+        "Thank you."
     ),
-    vars={"호칭": "이름 부분 — ' Gil-dong Hong' (이름이 없으면 비어 있음)",
-          "대수": "단말 수", "단말목록": "'1. SN: ...' 줄들"},
+    vars={"원본제목": "요청 메일 제목", "호칭줄": "'Gil-dong Hong,' 한 줄 + 빈 줄",
+          "호칭": "이름 부분 — ' Gil-dong Hong' (이름이 없으면 비어 있음)",
+          "대수": "단말 수", "단말목록": "'SN: ...'"},
 ))
 
 _add(Tpl(
     key="wl_reply_date_ko", title="WhiteList 등록일 변경 회신 (한국어)", group="WhiteList",
     when="등록이 아니라 등록일만 바꿨을 때", to="요청하신 분",
-    subject="[White List] 등록일 변경 완료 안내 — {{대수}}대",
+    subject="RE: {{원본제목}}",
     body=(
-        "안녕하세요{{호칭}}.\n"
+        "안녕하세요.\n"
         "\n"
-        "요청하신 아래 {{대수}}대 단말의 FOTA 화이트리스트 등록일을{{변경일}}\n"
-        "변경하였습니다. 단말 등록 자체는 그대로 유지됩니다.\n"
+        "{{호칭줄}}"
+        "요청하신 아래 SN {{대수}}건에 대하여 등록일{{변경일}} 변경을 완료하였습니다.\n"
         "\n"
-        "[대상 단말]\n"
         "{{단말목록}}\n"
         "\n"
-        "날짜를 다시 조정하셔야 하거나 문의가 있으시면 이 메일로 회신해 주시기\n"
-        "바랍니다.\n"
-        "\n"
+        "업무에 참조 부탁드립니다.\n"
         "감사합니다."
     ),
-    vars={"호칭": "이름 부분", "대수": "단말 수",
-          "변경일": "' 2026-09-30 로' (날짜가 없으면 비어 있음)",
-          "단말목록": "'1. SN: ...' 줄들"},
+    vars={"원본제목": "요청 메일 제목", "호칭줄": "'염서연 대리님' 한 줄 + 빈 줄",
+          "호칭": "이름 부분 (예전 문구용)", "대수": "단말 수",
+          "변경일": "'(2026-09-30)' (날짜가 없으면 비어 있음)",
+          "단말목록": "'1. PM95 : 26131A0209, 26128A0418' 모델별 줄(모델을 모르면 'SN: ...')"},
 ))
 
 _add(Tpl(
     key="wl_reply_date_en", title="WhiteList 등록일 변경 회신 (영문)", group="WhiteList",
     when="등록일만 바꾼 건이고 요청 메일이 영문일 때", to="요청하신 분",
-    subject="[White List] Registration date changed — {{대수}} device(s)",
+    subject="RE: {{원본제목}}",
     body=(
         "Hello{{호칭}},\n"
         "\n"
-        "The registration date of the following {{대수}} device(s) on the FOTA white\n"
-        "list has been changed{{변경일}}. The registration itself remains in place.\n"
+        "The registration date of the following {{대수}} device(s) has been changed{{변경일}}.\n"
         "\n"
-        "[Devices]\n"
         "{{단말목록}}\n"
         "\n"
-        "If the date needs to be adjusted again, or if you have any question, please\n"
-        "reply to this email.\n"
-        "\n"
-        "Best regards,"
+        "Please refer to this for your work.\n"
+        "Thank you."
     ),
-    vars={"호칭": "이름 부분", "대수": "단말 수",
+    vars={"원본제목": "요청 메일 제목", "호칭줄": "'Gil-dong Hong,' 한 줄 + 빈 줄",
+          "호칭": "이름 부분", "대수": "단말 수",
           "변경일": "' to 2026-09-30' (날짜가 없으면 비어 있음)",
-          "단말목록": "'1. SN: ...' 줄들"},
+          "단말목록": "모델별 줄 또는 'SN: ...'"},
 ))
 
 _add(Tpl(

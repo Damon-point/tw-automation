@@ -443,6 +443,18 @@ def _reply_ctx(g: dict, with_cc: bool) -> dict:
     return (reply_context(rep.get("id"), with_cc=with_cc) or {}) if rep.get("id") else {}
 
 
+def _models_of(sns: list[str]) -> dict[str, str]:
+    """S/N → 모델 — 이미 등록한 기록에서(등록일 변경 회신을 모델별로 묶을 때)."""
+    from app.whitelist.db import whitelist_session
+    from app.whitelist.models import WLDevice
+
+    if not sns:
+        return {}
+    with whitelist_session() as db:
+        rows = db.query(WLDevice.sn, WLDevice.model).filter(WLDevice.sn.in_(list(sns))).order_by(WLDevice.id).all()
+    return {sn: m for sn, m in rows if m}
+
+
 @router.post("/threads/{tid}/reply-draft")
 def reply_draft(tid: str, body: DraftIn, request: Request):
     user(request)
@@ -460,8 +472,15 @@ def reply_draft(tid: str, body: DraftIn, request: Request):
         cc = _reply_ctx(g, True).get("cc", "")
     else:
         lang = WM.detect_lang(f"{rep.get('subject', '')}\n{rep.get('body_text', '')}")
-        d = WM.build_reply_draft(to_name=name, devices=[{"sn": s} for s in (body.sns or g["serials"])],
-                                 lang=lang, kind=body.kind, new_date=body.new_date)
+        from app.user_mailer import user_email
+
+        u = user(request)
+        sns = body.sns or g["serials"]
+        models = _models_of(sns) if body.kind == "등록일 변경" else {}
+        d = WM.build_reply_draft(to_name=name, devices=[{"sn": s, "model": models.get(s, "")} for s in sns],
+                                 lang=lang, kind=body.kind, new_date=body.new_date,
+                                 subject_orig=rep.get("subject", ""),
+                                 greeting=WM.learned_greeting(addr, user_email(u["id"])) if lang == "ko" else "")
         cc = ""
     return {"to": addr, "cc": cc if isinstance(cc, str) else ", ".join(cc or []), **d}
 

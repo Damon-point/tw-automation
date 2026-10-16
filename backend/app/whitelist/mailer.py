@@ -18,16 +18,66 @@ def detect_lang(text: str) -> str:
     return "ko" if re.search(r"[가-힣]", text or "") else "en"
 
 
-def _reply_device_lines(devices: list[dict]) -> str:
-    # 회신 본문에는 SN 만 넣는다(Model·OS·OS Type 은 넣지 않는다).
-    return "\n".join(
-        f"{i+1}. SN: {d.get('sn','')}" for i, d in enumerate(devices)
-    )
+def _reply_device_lines(devices: list[dict], by_model: bool = False) -> str:
+    """회신에 넣는 S/N — 실제로 보낸 회신(2026-09~10)과 같은 꼴.
+
+    등록: 'SN: a, b, c' 한 줄(많으면 10개씩 줄을 나눈다).
+    등록일 변경: 모델을 알면 '1. PM95 : a, b' 처럼 모델별 번호 목록.
+    """
+    sns = [str(d.get("sn", "")).strip() for d in devices if str(d.get("sn", "")).strip()]
+    if by_model and any(d.get("model") for d in devices):
+        groups: dict[str, list[str]] = {}
+        for d in devices:
+            sn = str(d.get("sn", "")).strip()
+            if sn:
+                groups.setdefault(str(d.get("model") or "-"), []).append(sn)
+        return "\n".join(f"{i+1}. {m} : {', '.join(v)}" for i, (m, v) in enumerate(groups.items()))
+    rows = [", ".join(sns[i:i + 10]) for i in range(0, len(sns), 10)]
+    return "SN: " + ",\n".join(rows)
+
+
+_GREET = re.compile(r"^([가-힣]{2,4}\s*(?:[가-힣]{1,4}\s*)?님)\s*[.,]?$")
+_QUOTE_SPLIT = re.compile(r"\n\s*(?:From:|보낸 사람:|-----Original|-----\s*원본|발신:)")
+
+
+def learned_greeting(to_addr: str, sender_addr: str) -> str:
+    """보내는 사람이 그 받는 사람에게 마지막으로 쓴 호칭 — '염서연 대리님'.
+
+    메일 머리의 이름은 영문(Rosie Yeom)이고 직원 명부에는 직함이 없다. 직접 보낸 회신에는
+    인사 다음 줄에 늘 '이름 직함님' 을 쓰므로 그것을 배운다. 못 찾으면 ''.
+    """
+    to_addr, sender_addr = (to_addr or "").strip().lower(), (sender_addr or "").strip().lower()
+    if not (to_addr and sender_addr):
+        return ""
+    from sqlalchemy import text
+
+    from app.database import engine
+
+    with engine.connect() as c:
+        rows = c.execute(text(
+            "select body_text from cached_mails where lower(sender) like :s and lower(to_recipients) like :t "
+            "order by id desc limit 30"), {"s": f"%{sender_addr}%", "t": f"%{to_addr}%"}).fetchall()
+    for (body,) in rows:
+        own = _QUOTE_SPLIT.split(body or "")[0]
+        lines = [ln.strip() for ln in own.splitlines() if ln.strip()]
+        for i, ln in enumerate(lines[:6]):
+            if ln.startswith("안녕하세요") and i + 1 < len(lines):
+                m = _GREET.match(lines[i + 1])
+                if m:
+                    return re.sub(r"\s+", " ", m.group(1))
+    return ""
+
+
+def _strip_re(subject: str) -> str:
+    s = (subject or "").strip()
+    while s.lower().startswith(("re:", "회신:", "답장:")):
+        s = s.split(":", 1)[1].strip()
+    return s
 
 
 def build_reply_draft(
     *, to_name: str, devices: list[dict], lang: str, subject_orig: str = "",
-    orig_mail: dict | None = None, kind: str = "", new_date: str = "",
+    orig_mail: dict | None = None, kind: str = "", new_date: str = "", greeting: str = "",
 ) -> dict:
     """처리 완료 안내 **초안**(관리자가 다듬어 발송). {subject, body}.
 
@@ -40,18 +90,23 @@ def build_reply_draft(
     """
     from app import mail_templates as MT
 
-    tbl = _reply_device_lines(devices)
-    n = len(devices)
     en = lang == "en"
     date_only = kind == "등록일 변경"
+    tbl = _reply_device_lines(devices, by_model=date_only)
+    n = len(devices)
     key = ("wl_reply_date_" if date_only else "wl_reply_done_") + ("en" if en else "ko")
     if en:
         호칭 = (" " + to_name) if to_name else ""
         변경일 = (" to " + new_date) if new_date else ""
+        호칭줄 = (to_name + ",\n\n") if to_name else ""
     else:
         호칭 = (", " + to_name + "님") if to_name else ""
-        변경일 = (" " + new_date + " 로") if new_date else ""
-    subject, body = MT.render(key, 호칭=호칭, 대수=n, 단말목록=tbl, 변경일=변경일)
+        변경일 = ("(" + new_date + ")") if new_date else ""
+        # 직접 보낸 회신에서 배운 호칭('염서연 대리님')이 먼저, 없으면 이름님
+        who = greeting or ((to_name + "님") if to_name else "")
+        호칭줄 = (who + "\n\n") if who else ""
+    subject, body = MT.render(key, 호칭=호칭, 호칭줄=호칭줄, 대수=n, 단말목록=tbl, 변경일=변경일,
+                              원본제목=_strip_re(subject_orig) or "FOTA 등록")
     return {"subject": subject, "body": body}
 
 
