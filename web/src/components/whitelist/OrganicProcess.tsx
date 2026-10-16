@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tag, cx } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import {
@@ -217,13 +217,16 @@ function NewMode({ t, view, opts, ask, busy, setBusy, onResult, onDone }: {
   const [refresh, setRefresh] = useState(0);
   const [mModel, setMModel] = useState("");
   const [mRule, setMRule] = useState("");
-  const [selUnk, setSelUnk] = useState<Record<string, boolean>>({});
+  // 체크를 푼 S/N — 미리보기 숫자에서도, 실제 등록에서도 빠진다
+  const [excl, setExcl] = useState<Record<string, boolean>>({});
+  const exclude = useMemo(() => Object.keys(excl).filter((k) => excl[k]), [excl]);
+  const setOn = (sns: string[], on: boolean) => setExcl((x) => ({ ...x, ...Object.fromEntries(sns.map((s) => [s, !on])) }));
 
   const load = useCallback(async (refreshLookup = false) => {
     try {
-      setPv(await post<OrgPreview>(`/api/wl/organic/${t.tid}/new-preview`, { category, picks, manual, refresh_lookup: refreshLookup }));
+      setPv(await post<OrgPreview>(`/api/wl/organic/${t.tid}/new-preview`, { category, picks, manual, exclude, refresh_lookup: refreshLookup }));
     } catch (e) { toast("error", errText(e)); }
-  }, [t.tid, category, picks, manual, toast]);
+  }, [t.tid, category, picks, manual, exclude, toast]);
 
   const relook = useRef(0);
   useEffect(() => {
@@ -241,7 +244,7 @@ function NewMode({ t, view, opts, ask, busy, setBusy, onResult, onDone }: {
   async function run(write: boolean) {
     setBusy(write ? "run" : "dry");
     try {
-      const r = await post<OrgRun>(`/api/wl/organic/${t.tid}/new-run`, { category, picks, manual, write });
+      const r = await post<OrgRun>(`/api/wl/organic/${t.tid}/new-run`, { category, picks, manual, exclude, write });
       onResult(
         <div className="space-y-1 rounded-xl border border-line p-3 text-[13px]">
           <div className={cx("flex flex-wrap items-center gap-2 font-semibold", r.fail_count ? "text-warn" : "text-ok")}>
@@ -261,7 +264,8 @@ function NewMode({ t, view, opts, ask, busy, setBusy, onResult, onDone }: {
   }
 
   function applyManual(clear: boolean) {
-    const targets = pv ? (Object.keys(selUnk).filter((k) => selUnk[k]).length ? Object.keys(selUnk).filter((k) => selUnk[k]) : pv.unknown.map((u) => u.sn)) : [];
+    // 체크한(보낼) 모델 미확인 S/N 에 지정한다
+    const targets = pv ? pv.unknown.map((u) => u.sn).filter((sn) => !excl[sn]) : [];
     if (!clear) {
       const r = rulesOf(mModel).find((x) => `${x.from}→${x.to}` === mRule);
       if (!mModel || !r) { toast("warn", "모델과 From→To 를 모두 고르세요"); return; }
@@ -270,7 +274,6 @@ function NewMode({ t, view, opts, ask, busy, setBusy, onResult, onDone }: {
     } else {
       setManual((m) => { const n = { ...m }; targets.forEach((sn) => delete n[sn]); return n; });
     }
-    setSelUnk({});
   }
 
   if (!pv) return <div className="flex items-center gap-2 text-[13px] text-ink-3"><span className="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />포털에서 S/N {view.new_sns.length.toLocaleString()}건의 모델을 조회하는 중…</div>;
@@ -293,6 +296,7 @@ function NewMode({ t, view, opts, ask, busy, setBusy, onResult, onDone }: {
           <div key={m.model} className="space-y-2 rounded-xl border border-line p-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[14px] font-bold">{m.model}</span><Tag>{m.count.toLocaleString()}대</Tag>
+              {m.all > m.count && <Tag tone="none">제외 {(m.all - m.count).toLocaleString()}</Tag>}
               <Tag tone={m.valid === m.count ? "ok" : "warn"}>유효 {m.valid.toLocaleString()}</Tag>
               <div className="flex-1" />
               {rs.length === 1 ? <span className="text-[12.5px] text-ink-2">{rs[0].from} → {rs[0].to} · <span className="font-[family-name:var(--font-mono)]">{rs[0].ostype}</span> <Tag tone="ok">규칙 1개 · 자동</Tag></span>
@@ -301,7 +305,10 @@ function NewMode({ t, view, opts, ask, busy, setBusy, onResult, onDone }: {
                     onChange={(v) => { const r = rs.find((x) => `${x.from}→${x.to}` === v); setPicks((s) => ({ ...s, [m.model]: { from: String(r?.from ?? ""), to: String(r?.to ?? "") } })); }}
                     options={rs.map((r) => ({ value: `${r.from}→${r.to}`, label: `${r.from}→${r.to} · ${r.ostype}` }))} />}
             </div>
-            <UploadTable rows={m.rows} max={220} />
+            <UploadTable rows={m.rows} max={220} pick={{
+              on: (sn) => !excl[sn], set: (sn, v) => setOn([sn], v),
+              all: m.sns.every((sn) => !excl[sn]), setAll: (v) => setOn(m.sns, v),
+            }} />
             {m.count > m.rows.length && <div className="text-[12px] text-ink-3">{m.count.toLocaleString()}대 중 {m.rows.length}줄 표시</div>}
           </div>
         );
@@ -311,7 +318,7 @@ function NewMode({ t, view, opts, ask, busy, setBusy, onResult, onDone }: {
         <div className="space-y-2 rounded-xl border border-err/30 border-l-4 border-l-err p-3">
           <div className="text-[14px] font-bold text-err">모델을 못 받은 S/N · {pv.unknown_total.toLocaleString()}대
             {Object.keys(manual).length > 0 && <span className="font-normal text-ink-2"> (지정 {Object.keys(manual).length.toLocaleString()}대)</span>}</div>
-          <div className="text-[12.5px] text-ink-2">포털 단말 마스터에 없거나 조회가 실패했습니다. 모델과 OS 를 지정한 행만 등록에 들어갑니다. 행을 고르면 고른 것에만, 아무것도 고르지 않으면 전체에 적용합니다.</div>
+          <div className="text-[12.5px] text-ink-2">포털 단말 마스터에 없거나 조회가 실패했습니다. 모델과 OS 를 지정한 행만 등록에 들어갑니다. 지정은 체크한 행에 적용되고, 체크를 푼 행은 보내지 않습니다.</div>
           <div className="flex flex-wrap items-end gap-2">
             <Field label="모델"><Select className="w-36" value={mModel} placeholder="선택" options={pv.rule_models} onChange={(v) => { setMModel(v); const rs = rulesOf(v); setMRule(rs.length === 1 ? `${rs[0].from}→${rs[0].to}` : ""); }} /></Field>
             <Field label="From→To"><Select className="w-36" value={mRule} placeholder="선택" options={mRules.map((r) => `${r.from}→${r.to}`)} onChange={setMRule} /></Field>
@@ -322,11 +329,11 @@ function NewMode({ t, view, opts, ask, busy, setBusy, onResult, onDone }: {
             { key: "pick", w: "28px",
               label: (
                 <input type="checkbox" aria-label="전체 선택" className="accent-[var(--brand)]"
-                       checked={pv.unknown.length > 0 && pv.unknown.every((u) => selUnk[u.sn])}
-                       onChange={(e) => setSelUnk(e.target.checked ? Object.fromEntries(pv.unknown.map((u) => [u.sn, true])) : {})} />
+                       checked={pv.unknown.every((u) => !excl[u.sn])}
+                       onChange={(e) => setOn(pv.unknown.map((u) => u.sn), e.target.checked)} />
               ),
-              render: (r) => <input type="checkbox" checked={!!selUnk[r.sn]} onChange={(e) => setSelUnk((s) => ({ ...s, [r.sn]: e.target.checked }))} className="accent-[var(--brand)]" /> },
-            { key: "sn", label: "S/N", mono: true }, { key: "model", label: "모델" }, { key: "os", label: "From→To" },
+              render: (r) => <input type="checkbox" checked={!excl[r.sn]} onChange={(e) => setOn([r.sn], e.target.checked)} className="accent-[var(--brand)]" /> },
+            { key: "sn", label: "S/N", mono: true, render: (r) => <span className={r.excluded ? "text-ink-3 line-through" : ""}>{r.sn}</span> }, { key: "model", label: "모델" }, { key: "os", label: "From→To" },
             { key: "ostype", label: "ostype", mono: true }, { key: "status", label: "상태" },
           ]} />
         </div>

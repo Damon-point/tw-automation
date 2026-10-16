@@ -6,17 +6,27 @@ import { errText, post, type Draft, type UploadRow, type VerifyItem, type Verify
 import { Btn, Field, Input, Modal, Note, SubHead, Table, Textarea, useToast } from "./kit";
 
 /** 업로드 엑셀에 실제로 들어갈 행 — 열 이름·순서가 업로드 파일 머리와 같다 */
-export function UploadTable({ rows, max = 300 }: { rows: UploadRow[]; max?: number }) {
+/** pick 을 주면 맨 앞에 체크 — 체크를 푼 S/N 은 보내지 않는다(excluded 로 흐리게). */
+export function UploadTable({ rows, max = 300, pick }: {
+  rows: UploadRow[]; max?: number;
+  pick?: { on: (sn: string) => boolean; set: (sn: string, v: boolean) => void; all: boolean; setAll: (v: boolean) => void };
+}) {
   return (
     <Table<UploadRow> max={max} rows={rows} empty="대상 없음"
-      rowTone={(r) => (r.status.startsWith("⚠") ? "warn" : undefined)}
+      rowTone={(r) => (r.status.startsWith("⚠") && !r.excluded ? "warn" : undefined)}
       cols={[
-        { key: "sn", label: "SN", mono: true },
+        ...(pick ? [{
+          key: "pick", w: "28px",
+          label: <input type="checkbox" aria-label="전체 선택" checked={pick.all} onChange={(e) => pick.setAll(e.target.checked)} className="accent-[var(--brand)]" />,
+          render: (r: UploadRow) => <input type="checkbox" checked={pick.on(r.sn)} onChange={(e) => pick.set(r.sn, e.target.checked)} className="accent-[var(--brand)]" />,
+        }] : []),
+        { key: "sn", label: "SN", mono: true, render: (r) => <span className={r.excluded ? "text-ink-3 line-through" : ""}>{r.sn}</span> },
         { key: "api", label: "Android API" },
         { key: "end", label: "Support end date" },
         { key: "pn", label: "Partnumber" },
         { key: "ostype", label: "ostype", mono: true },
-        { key: "status", label: "상태", render: (r) => <span className={r.status.startsWith("⚠") ? "text-warn" : "text-ok"}>{r.status}</span> },
+        { key: "status", label: "상태", render: (r) => r.excluded ? <span className="text-ink-3">제외 — 보내지 않음</span>
+          : <span className={r.status.startsWith("⚠") ? "text-warn" : "text-ok"}>{r.status}</span> },
       ]} />
   );
 }

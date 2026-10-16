@@ -629,6 +629,7 @@ class OrgNewIn(BaseModel):
     category: str = ""
     picks: dict[str, dict] = {}          # 모델 → {from, to}
     manual: dict[str, dict] = {}         # S/N → {model, from, to}
+    exclude: list[str] = []              # 화면에서 체크를 푼 S/N — 숫자 · 등록에서 뺀다(2026-10-16)
     write: bool = False
     refresh_lookup: bool = False
 
@@ -667,19 +668,27 @@ def organic_new_preview(tid: str, body: OrgNewIn, request: Request):
     g = _find(tid)
     ctx = _org_ctx(g)
     look, sns, cat, groups, model_devs, manual, man_devs = _org_build(g, ctx, body)
+    ex = set(body.exclude)
     models = []
     for m, devs in model_devs.items():
         rules = [r for r in S.rules_for(m) if r["category"] == cat] or S.rules_for(m)
+        inc = [d for d in devs if d["sn"] not in ex]
         rows = _upload_rows(devs)
-        models.append({"model": m, "count": len(devs), "valid": sum(1 for d in devs if d["valid"]),
+        for r in rows:
+            r["excluded"] = r["sn"] in ex
+        models.append({"model": m, "count": len(inc), "valid": sum(1 for d in inc if d["valid"]),
+                       "all": len(devs), "sns": [d["sn"] for d in devs],
                        "rules": [{"from": r["from"], "to": r["to"], "ostype": r["ostype"]} for r in rules],
                        "rows": rows[:300]})
     from app.pages.whitelist_organic import unknown_rows
 
     unk = unknown_rows(look.failed, manual, cat)
-    ready = sum(m["valid"] for m in models) + sum(1 for d in man_devs if d["valid"])
+    for r in unk:
+        r["excluded"] = r["sn"] in ex
+    ready = sum(m["valid"] for m in models) + sum(1 for d in man_devs if d["valid"] and d["sn"] not in ex)
     return {"category": cat, "total": len(sns), "looked_up": len(sns) - len(look.failed),
             "error": look.error or "", "models": models, "unknown": unk[:600], "unknown_total": len(unk),
+            "excluded": len(ex & set(sns)),
             "ready": ready, "rule_models": sorted({r["model"] for r in S.list_rules()})}
 
 
@@ -690,8 +699,11 @@ def organic_new_run(tid: str, body: OrgNewIn, request: Request):
     g = _find(tid)
     ctx = _org_ctx(g)
     look, sns, cat, groups, model_devs, manual, man_devs = _org_build(g, ctx, body)
+    ex = set(body.exclude)
     devs, invalid, reasons = [], 0, []
     for d in [x for v in model_devs.values() for x in v] + man_devs:
+        if d["sn"] in ex:                 # 화면에서 체크를 푼 S/N — 보내지 않는다
+            continue
         if d["valid"]:
             devs.append({"sn": d["sn"], "api": d["api"], "endDate": d["endDate"], "ostype": d["ostype"],
                          "partnumber": "", "model": d["model"], "cur": d["cur"], "upg": d["upg"]})
@@ -700,7 +712,7 @@ def organic_new_run(tid: str, body: OrgNewIn, request: Request):
             rr = ", ".join(d["errors"])
             if rr not in reasons and len(reasons) < 3:
                 reasons.append(rr)
-    invalid += len([s for s in look.failed if s not in manual])
+    invalid += len([s for s in look.failed if s not in manual and s not in ex])
     parts = [f"{m} {(body.picks.get(m) or {}).get('from', '')}→{(body.picks.get(m) or {}).get('to', '')}"
              for m in groups]
     parts += sorted({f"{a['model']} {a['from']}→{a['to']}(수동)" for a in manual.values()})

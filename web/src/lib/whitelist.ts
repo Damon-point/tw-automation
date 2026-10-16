@@ -19,7 +19,7 @@ export type ThreadDetail = ThreadSummary & {
   members: { id: number; subject: string; sender: string; when: string; body: string; attachments: string }[];
 };
 
-export type UploadRow = { sn: string; api: string; end: string; pn: string; ostype: string; status: string };
+export type UploadRow = { sn: string; api: string; end: string; pn: string; ostype: string; status: string; excluded?: boolean };
 export type FotaBrief = { ok: boolean; total: number; success: number; msg: string; dry: boolean; fails: { sn?: string; msg?: string }[] };
 export type VerifyItem = { sn: string; endDate?: string; ostype?: string; api?: string };
 export type VerifyRow = { sn: string; found: boolean; date: string; osType: string; androidApi: string; diffs: string[]; ok: boolean };
@@ -35,11 +35,12 @@ export type OrgView = {
   all_sns: string[]; new_sns: string[]; auto_category: string;
   blocks: { index: number; source: string; serials: number; plan: { type?: string; model?: string; from_os?: string; to_os?: string; date?: string; note?: string } }[];
 };
-export type OrgModel = { model: string; count: number; valid: number; rules: { from: number; to: number; ostype: string }[]; rows: UploadRow[] };
+/** count · valid 는 체크한(보낼) 것만, all · sns 는 체크를 푼 것까지 */
+export type OrgModel = { model: string; count: number; valid: number; all: number; sns: string[]; rules: { from: number; to: number; ostype: string }[]; rows: UploadRow[] };
 export type OrgPreview = {
   category: string; total: number; looked_up: number; error: string; models: OrgModel[];
-  unknown: { sn: string; model: string; os: string; ostype: string; status: string }[]; unknown_total: number;
-  ready: number; rule_models: string[];
+  unknown: { sn: string; model: string; os: string; ostype: string; status: string; excluded?: boolean }[]; unknown_total: number;
+  ready: number; rule_models: string[]; excluded: number;
 };
 export type OrgRun = {
   dry: boolean; ok: boolean; success: number; fails: { sn?: string; msg?: string }[]; fail_count?: number;
