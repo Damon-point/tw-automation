@@ -45,6 +45,9 @@ export type SettingsOverview = {
 export type ShadowWrite = { at: string; system: string; action: string; [k: string]: unknown };
 export type ShadowResp = {
   live: boolean;
+  /** live 가 아니어도 실제로 쓰는 영역(whitelist · license) */
+  live_areas: string[];
+  areas: string[];
   writes: ShadowWrite[];
   runtime: { started_at: string; loops: Record<string, { ok: boolean; at: string; error?: string }> };
 };

@@ -127,7 +127,7 @@ def dev_login(request: Request):
 @app.get("/api/me")
 def me(request: Request):
     u = _user(request)
-    return {**u, "legacy_url": LEGACY_URL, "live": shadow.live()}
+    return {**u, "legacy_url": LEGACY_URL, "live": shadow.live(), "live_areas": sorted(shadow.live_areas())}
 
 
 # ── 공통 ───────────────────────────────────────────────────────────────────────

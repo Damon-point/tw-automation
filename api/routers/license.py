@@ -165,7 +165,7 @@ def overview(request: Request, scope: str = "auto"):
              "total_qty": s["total_qty"], "approved_qty": s["approved_qty"]}
     return {"is_admin": admin, "scope": "mine" if mine else "all", "keys_ready": licensing.keys_configured(),
             "cert_template": cert._template_path().exists(), "stats": s, "requests": [_row(r) for r in rows],
-            "live": shadow.live()}
+            "live": shadow.area_live("license")}
 
 
 @router.get("/requests/{doc_id}")
@@ -374,7 +374,7 @@ def _send_result(r: LicenseRequest, kind: str, pdf: bytes | None, u: dict, *, re
     ok, err = user_mailer.send_as_user(u["id"], to, m["subject"].strip(), m["body"], att)
     _log_mail(r.doc_id, {"at": datetime.now().isoformat(timespec="seconds"), "kind": kind, "to": to,
                          "by": u.get("username", ""), "ok": ok, "error": err, "resend": resend,
-                         "attached": bool(att), "shadow": not shadow.live()})
+                         "attached": bool(att), "shadow": not shadow.area_live("license")})
     return {"ok": ok, "error": err, "to": to}
 
 

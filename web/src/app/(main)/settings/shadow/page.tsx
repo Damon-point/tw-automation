@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Button, Input, Modal, Section, SearchBox, toast } from "@/components/admin/kit";
 import { Empty, Skeleton, Tag, cx } from "@/components/ui";
 import { useApi, type Me } from "@/lib/api";
+import { AREA_LABEL } from "@/components/Shell";
 import { errText, send, type ShadowResp, type ShadowWrite } from "@/lib/admin";
 
 const SYSTEM: Record<string, string> = {
@@ -43,6 +44,20 @@ export default function ShadowPage() {
     return c;
   }, [writes]);
   const rows = writes.filter((w) => (!sys || w.system === sys) && (!q || JSON.stringify(w).toLowerCase().includes(q.toLowerCase())));
+
+  async function switchArea(a: string, on: boolean) {
+    setBusy(true);
+    try {
+      const cur = data?.live_areas ?? [];
+      await send("/api/shadow/areas", { areas: on ? [...cur, a] : cur.filter((x) => x !== a) });
+      toast(on ? `${AREA_LABEL[a] ?? a} — 지금부터 실제로 씁니다` : `${AREA_LABEL[a] ?? a} — 검증 모드로 돌렸습니다`);
+      reload();
+    } catch (e) {
+      toast(errText(e), "err");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function switchMode(live: boolean) {
     setBusy(true);
@@ -95,6 +110,27 @@ export default function ShadowPage() {
         </div>
         {data.runtime.started_at && <div className="mt-2 text-[12px] text-ink-3">API 기동 {data.runtime.started_at}</div>}
       </Section>
+
+      {!live && (
+        <Section title="영역별 운영" desc="검증 모드여도 켜 둔 영역은 그 화면 · 자동 작업의 외부 쓰기를 실제로 합니다. OS Update 는 8080 에서 하는 동안 끈 채로 둡니다.">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {data.areas.map((a) => {
+              const on = data.live_areas.includes(a);
+              return (
+                <div key={a} className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5">
+                  <span className={cx("h-2 w-2 rounded-full", on ? "bg-ok" : "bg-[#d97706]")} />
+                  <span className="flex-1 text-[14px] font-semibold">{AREA_LABEL[a] ?? a}</span>
+                  <span className={cx("text-[13px] font-semibold", on ? "text-ok" : "text-ink-3")}>{on ? "운영 — 실제로 씀" : "검증 모드"}</span>
+                  {isAdmin && (
+                    <Button size="sm" variant={on ? "outline" : "danger"} busy={busy}
+                            onClick={() => switchArea(a, !on)}>{on ? "끄기" : "켜기"}</Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
 
       <Section title="막아 둔 쓰기" desc="최근 것부터. 줄을 누르면 보내려던 내용 전체가 보입니다."
                right={<Button variant="ghost" size="sm" onClick={reload}>새로고침</Button>}>

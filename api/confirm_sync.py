@@ -50,6 +50,11 @@ def public_url() -> str:
     return (os.getenv("TWN_CONFIRM_PUBLIC_URL") or "").strip().rstrip("/")
 
 
+def osu_enabled() -> bool:
+    """OS Update 결재(RN 1차 · 최종 · 뉴스레터)도 올리는가. OS Update 는 아직 8080 에서 하므로 기본은 끈다(2026-10-16)."""
+    return (os.getenv("TWN_CONFIRM_OSU") or "0").strip() == "1"
+
+
 def enabled() -> bool:
     return bool(base_url() and (os.getenv("TWN_CONFIRM_TOKEN") or "").strip())
 
@@ -121,9 +126,9 @@ def _users() -> list[dict]:
 
 def _open_requests() -> dict[str, dict]:
     """3080 에서 지금 '요청됨' 인 결재 — {source_key: 올릴 내용(+ 문서 목록)}."""
-    jobs = J.list_jobs()
-    states = get_states([J.state_key(j["id"]) for j in jobs])
     out: dict[str, dict] = {}
+    jobs = J.list_jobs() if osu_enabled() else []
+    states = get_states([J.state_key(j["id"]) for j in jobs])
     for j in jobs:
         st = states.get(J.state_key(j["id"])) or {}
         for kind, spec in R.KINDS.items():
@@ -406,6 +411,9 @@ def _sync() -> dict:
             closed.append({"source_key": key, "status": st_, "decided_by": (r.confirm_by or "") if r else "",
                            "decided_at": _aware(r.confirm_date) if r and r.confirm_date else None,
                            "note": (r.admin_note or "") if r else ""})
+            continue
+        if key.startswith("job-") and not osu_enabled():
+            closed.append({"source_key": key, "status": "moved"})
             continue
         job_id, kind, at = _parse_key(key)
         if states is None:
