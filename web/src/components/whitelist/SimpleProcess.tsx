@@ -177,7 +177,15 @@ export default function SimpleProcess({ t, onChanged }: { t: ThreadDetail; onCha
         <div className="space-y-5">
           {/* 일련번호 고르기 */}
           <section>
-            <SubHead right={<span className="text-[12.5px] text-ink-3">{sel.length}/{t.serials.length} 선택</span>}>일련번호</SubHead>
+            <SubHead right={
+              <span className="flex items-center gap-2 text-[12.5px] text-ink-3">
+                {sel.length}/{t.serials.length} 선택
+                <button onClick={() => setPicked(Object.fromEntries(t.serials.map((s) => [s.sn, true])))} disabled={sel.length === t.serials.length}
+                        className="rounded-md border border-line px-2 py-0.5 font-semibold text-ink-2 hover:bg-surface-2 disabled:opacity-40">전체 선택</button>
+                <button onClick={() => setPicked({})} disabled={!sel.length}
+                        className="rounded-md border border-line px-2 py-0.5 font-semibold text-ink-2 hover:bg-surface-2 disabled:opacity-40">전체 해제</button>
+              </span>
+            }>일련번호</SubHead>
             <div className="flex flex-wrap gap-1.5">
               {t.serials.map((s) => {
                 const on = !!picked[s.sn];

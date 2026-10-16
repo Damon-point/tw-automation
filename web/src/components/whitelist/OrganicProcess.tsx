@@ -319,7 +319,13 @@ function NewMode({ t, view, opts, ask, busy, setBusy, onResult, onDone }: {
             <Btn kind="ghost" small onClick={() => applyManual(true)}>지정 취소</Btn>
           </div>
           <Table rows={pv.unknown} max={260} rowTone={(r) => (r.status.startsWith("✅") ? undefined : "warn")} cols={[
-            { key: "pick", label: "", w: "28px", render: (r) => <input type="checkbox" checked={!!selUnk[r.sn]} onChange={(e) => setSelUnk((s) => ({ ...s, [r.sn]: e.target.checked }))} className="accent-[var(--brand)]" /> },
+            { key: "pick", w: "28px",
+              label: (
+                <input type="checkbox" aria-label="전체 선택" className="accent-[var(--brand)]"
+                       checked={pv.unknown.length > 0 && pv.unknown.every((u) => selUnk[u.sn])}
+                       onChange={(e) => setSelUnk(e.target.checked ? Object.fromEntries(pv.unknown.map((u) => [u.sn, true])) : {})} />
+              ),
+              render: (r) => <input type="checkbox" checked={!!selUnk[r.sn]} onChange={(e) => setSelUnk((s) => ({ ...s, [r.sn]: e.target.checked }))} className="accent-[var(--brand)]" /> },
             { key: "sn", label: "S/N", mono: true }, { key: "model", label: "모델" }, { key: "os", label: "From→To" },
             { key: "ostype", label: "ostype", mono: true }, { key: "status", label: "상태" },
           ]} />

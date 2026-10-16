@@ -181,7 +181,7 @@ export function useConfirm() {
 // ── 표 ──────────────────────────────────────────────────────────────────────
 
 export function Table<R>({ cols, rows, max = 320, empty = "없음", rowTone }: {
-  cols: { key: string; label: string; render?: (r: R) => React.ReactNode; mono?: boolean; w?: string }[];
+  cols: { key: string; label: React.ReactNode; render?: (r: R) => React.ReactNode; mono?: boolean; w?: string }[];
   rows: R[]; max?: number; empty?: string; rowTone?: (r: R) => "error" | "warn" | "ok" | undefined;
 }) {
   return (
