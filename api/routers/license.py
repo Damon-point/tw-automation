@@ -248,15 +248,24 @@ def create(body: NewIn, request: Request):
     if to_admins:
         from app import mail_templates as MT
 
+        import confirm_sync
+
+        web = confirm_sync.public_url()
+        review_url = f"{web}/go/license/{req.doc_id}" if web else f"{MT.auto_values().get('앱주소', '')}/license"
         subject, text = MT.render(
             "license_request", 신청자=u.get("username", ""), 문서번호=req.doc_id, 회사=req.company_name,
             수량=req.quantity, 담당자=f"{req.contact_name} ({req.contact_email})",
-            라이선스아이디=req.license_user_id, 비고=req.note or "-")
+            라이선스아이디=req.license_user_id, 비고=req.note or "-", 검수주소=review_url)
         ok, err = user_mailer.send_as_user(u["id"], to_admins, subject.strip(), text)
         mail = {"ok": ok, "error": err, "to": to_admins}
     src = body.source_mail_id or body.mail_id
     if src:
         LI.set_status(src, "created", req.doc_id, u.get("username", ""))
+    # 검수 웹에 바로 올린다(30초 주기를 기다리지 않게) — 인증서 미리보기를 만드느라 몇 초 걸린다
+    import confirm_sync
+
+    if confirm_sync.enabled():
+        threading.Thread(target=confirm_sync.sync_once, name="twn-confirm-now", daemon=True).start()
     return {"ok": True, "doc_id": req.doc_id, "request_mail": mail}
 
 

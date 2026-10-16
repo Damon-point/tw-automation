@@ -177,14 +177,36 @@ def _license_requests() -> dict[str, dict]:
 
 
 def license_docs(r) -> list[dict]:
-    """PO 파일 — 원본 그대로(PDF 로 바꾸지 않는다)."""
-    if not (r.po_path and os.path.exists(r.po_path)):
-        return []
-    ext = Path(r.po_filename or r.po_path).suffix.lower()
-    if ext not in _PO_MIME:
-        return []
-    return [{"name": r.po_filename or Path(r.po_path).name, "label": "PO", "mime": _PO_MIME[ext],
-             "path": r.po_path, "raw": True}]
+    """① 발급될 License Certificate(검수 대상) ② PO 원본(받아서 보는 근거 서류)."""
+    out = []
+    cert_doc = _license_cert_doc(r)
+    if cert_doc:
+        out.append(cert_doc)
+    if r.po_path and os.path.exists(r.po_path):
+        ext = Path(r.po_filename or r.po_path).suffix.lower()
+        if ext in _PO_MIME:
+            out.append({"name": r.po_filename or Path(r.po_path).name, "label": "PO", "mime": _PO_MIME[ext],
+                        "path": r.po_path, "raw": True})
+    return out
+
+
+def _license_cert_doc(r) -> dict | None:
+    """승인하면 나갈 인증서를 미리 만든다 — 키가 없으면 먼저 만든다(3080 화면의 '키 만들기' 와 같고, 승인 때 이 키를 쓴다).
+    문서 내용(키 · 회사 · 수량 · 담당자 · 날짜)이 바뀔 때만 다시 만든다."""
+    from app.license import cert, licensing, service as LS
+
+    if r.status == LS.STATUS_PENDING and not r.license_key and licensing.keys_configured() \
+            and r.license_user_id and LS.norm_qty(r.quantity):
+        try:
+            key, _ = licensing.generate_license_key(r.license_user_id, LS.norm_qty(r.quantity))
+            LS.save_license_key(r.doc_id, key)
+            r = LS.get(r.doc_id)
+        except Exception:  # noqa: BLE001 — 키 정보가 섞일 수 있어 사유는 남기지 않는다
+            return None
+    ctx = cert.build_context(r)
+    fp = hashlib.sha1(json.dumps(ctx, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+    return {"name": f"{r.doc_id}_License_Certificate.pdf", "label": "License Certificate", "mime": MIME_PDF,
+            "fp": fp, "render": lambda rr=r: cert.render_certificate(rr)}
 
 
 def license_info(r) -> dict:
@@ -280,7 +302,16 @@ def _fingerprint(path: str) -> str:
     return f"{s.st_size}:{int(s.st_mtime)}"
 
 
+def _doc_fp(doc: dict) -> str:
+    return doc.get("fp") or _fingerprint(doc["path"])
+
+
 def _bytes_of(doc: dict) -> bytes:
+    if doc.get("render"):
+        data, err = doc["render"]()
+        if not data:
+            raise RuntimeError(f"문서를 만들지 못했습니다 — {err}")
+        return data
     if doc.get("raw") or doc["mime"] != MIME_PDF:
         return Path(doc["path"]).read_bytes()
     # docx → PDF 는 Word 로 돌려 느리다 — 같은 파일이면 한 번만
@@ -442,7 +473,7 @@ def _sync() -> dict:
         if web["status"] != "pending":
             continue
         for doc in info["docs"]:
-            fp = _fingerprint(doc["path"])
+            fp = _doc_fp(doc)
             if doc["name"] in web["files"] and mine["files"].get(doc["name"]) == fp:
                 continue
             try:
