@@ -1089,7 +1089,6 @@ class SubmitIn(BaseModel):
 def submit(body: SubmitIn, request: Request):
     u = user(request)
     from app.user_mailer import user_email
-    from app.whitelist import mailer as MAIL
 
     S = _S()
     if not body.devices:
@@ -1104,11 +1103,25 @@ def submit(body: SubmitIn, request: Request):
         lines = [f"{sn} — {v['request_id']} ({v['created_at']}, {STATUS_KO.get(v['status'], v['status'])})"
                  for sn, v in list(ex.duplicates.items())[:8]]
         raise HTTPException(409, "이미 신청된 단말이 있어 저장하지 않았습니다 · " + " · ".join(lines))
-    try:
-        mail_ok, mail_msg = MAIL.send_new_request(req, u["id"])
-    except Exception as e:  # noqa: BLE001
-        mail_ok, mail_msg = False, str(e)
-    return {"request": req, "mail_ok": mail_ok, "mail_msg": mail_msg}
+    # 제출하면 그대로 FOTA 에 등록한다(2026-10-16 사용자 요청) — 대기/승인 절차 · 관리자 알림 메일 없이.
+    # 메일 처리와 같은 함수: 신규는 엑셀 업로드, 이미 있는 S/N 은 FOTA DB 덮어쓰기.
+    res = S.register_devices(u["id"], req["devices"], allow_write=True)
+    fails = [d for d in res.get("details", []) if not d.get("ok")]
+    done = bool(res.get("ok")) and not fails and not res.get("dryRun")
+    if done:
+        from datetime import datetime
+
+        from app.whitelist.db import whitelist_session
+        from app.whitelist.models import WLRequest
+
+        with whitelist_session() as db:
+            r = db.get(WLRequest, req["id"])
+            r.status, r.processed_by, r.processed_at, r.fota_status = "confirmed", u["username"], datetime.now(), "fota_sent"
+            db.commit()
+        S.invalidate_sns_cache([d["sn"] for d in req["devices"]])
+        _invalidate()
+    return {"request": req, "fota_ok": done, "success": res.get("success", 0), "total": len(req["devices"]),
+            "fails": fails[:20], "msg": res.get("msg", "")}
 
 
 def _xlsx(build) -> bytes:

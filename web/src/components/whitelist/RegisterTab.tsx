@@ -73,13 +73,20 @@ export default function RegisterTab() {
     if (!staged.length) { toast("warn", "등록할 단말기를 추가하세요"); return; }
     setBusy("submit");
     try {
-      const r = await post<{ request: { id: string; devices: unknown[] }; mail_ok: boolean; mail_msg: string }>("/api/wl/requests",
+      const r = await post<{ request: { id: string; devices: unknown[] }; fota_ok: boolean; success: number; total: number;
+                             fails: { sn?: string; msg?: string }[]; msg: string }>("/api/wl/requests",
         { devices: staged, charge_type: charge, free_reason: freeReason, memo });
       if (charge === "유상" && po) {
         try { await upload(`/api/wl/requests/${r.request.id}/po`, po); } catch (e) { toast("error", `PO 파일 저장 실패: ${errText(e)}`); }
       }
-      toast("ok", `신청 완료 · ${r.request.id} (${r.request.devices.length}대)${r.mail_ok ? "" : ` · 관리자 알림 메일 생략(${r.mail_msg})`}`);
-      setStaged([]); setMemo(""); setFreeReason(""); setPo(null);
+      if (r.fota_ok) {
+        toast("ok", `FOTA 등록 완료 · ${r.success}/${r.total}대 · ${r.request.id}`);
+        setStaged([]); setMemo(""); setFreeReason(""); setPo(null);
+      } else {
+        // 등록이 다 되지 않았다 — 신청은 '대기 중' 으로 남는다. 입력은 지우지 않는다.
+        const why = r.fails.slice(0, 3).map((f) => `${f.sn ?? ""} ${f.msg ?? ""}`.trim()).join(", ") || r.msg;
+        toast("error", `FOTA 등록 실패 · 성공 ${r.success}/${r.total}대 — ${why}`);
+      }
     } catch (e) { toast("error", errText(e)); } finally { setBusy(""); }
   }
 
