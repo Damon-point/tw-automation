@@ -256,7 +256,10 @@ def create(body: NewIn, request: Request):
             "license_request", 신청자=u.get("username", ""), 문서번호=req.doc_id, 회사=req.company_name,
             수량=req.quantity, 담당자=f"{req.contact_name} ({req.contact_email})",
             라이선스아이디=req.license_user_id, 비고=req.note or "-", 검수주소=review_url)
-        ok, err = user_mailer.send_as_user(u["id"], to_admins, subject.strip(), text)
+        from app.license.mail_html import request_html
+
+        ok, err = user_mailer.send_as_user(u["id"], to_admins, subject.strip(), text,
+                                           html=request_html(req, review_url))
         mail = {"ok": ok, "error": err, "to": to_admins}
     src = body.source_mail_id or body.mail_id
     if src:

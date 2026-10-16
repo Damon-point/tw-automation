@@ -44,7 +44,7 @@ def _qty(q) -> str:
 def _strip(cells: list[tuple[str, str]]) -> str:
     """눈에 먼저 걸려야 하는 값 한 줄 — Doc ID · 회사 · 수량."""
     td = "".join(
-        f'<td valign="top" style="{FAMILY};padding:12px 16px;border:1px solid {LINE};background:{SOFT}">'
+        f'<td valign="top" style="{FAMILY};padding:11px 12px;border:1px solid {LINE};background:{SOFT}">'
         f'<div style="{FAMILY};color:{INK3};font-size:11px;line-height:14px;mso-line-height-rule:exactly;'
         f'letter-spacing:.06em;text-transform:uppercase">{_e(k)}</div>'
         f'<div style="{FAMILY};color:{INK};font-size:17px;line-height:23px;mso-line-height-rule:exactly;'
@@ -96,7 +96,7 @@ def _shell(title: str, inner: str) -> str:
     return f"""<div style="margin:0;padding:28px 12px;background:#eef2f9;{FONT}">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="640" style="width:100%;max-width:640px;margin:0 auto;border-collapse:collapse;background:#ffffff;border:1px solid {LINE}">
   <tr>
-    <td bgcolor="{BRAND}" style="{FAMILY};padding:20px 28px;background:{BRAND};border-bottom:3px solid {BRAND_DARK}">
+    <td bgcolor="{BRAND}" style="{FAMILY};padding:18px 22px;background:{BRAND};border-bottom:3px solid {BRAND_DARK}">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>
         <td width="36" height="36" align="center" valign="middle" bgcolor="#ffffff" style="{FAMILY};width:36px;height:36px;background:#ffffff;border-radius:9px;color:{BRAND};font-size:14px;font-weight:800;line-height:36px">tw</td>
         <td style="{FAMILY};padding-left:12px">
@@ -106,9 +106,9 @@ def _shell(title: str, inner: str) -> str:
       </tr></table>
     </td>
   </tr>
-  <tr><td style="padding:26px 28px 8px;{FONT};line-height:21px;mso-line-height-rule:exactly">{inner}</td></tr>
+  <tr><td style="padding:24px 22px 8px;{FONT};line-height:21px;mso-line-height-rule:exactly">{inner}</td></tr>
   <tr>
-    <td style="{FAMILY};padding:14px 28px 22px;border-top:1px solid {LINE};color:{INK3};font-size:11.5px;line-height:1.7">
+    <td style="{FAMILY};padding:14px 22px 22px;border-top:1px solid {LINE};color:{INK3};font-size:11.5px;line-height:1.7">
       TW Automation · PMDM License 에서 자동으로 보낸 메일입니다.<br>&copy; {year} Point Mobile Co., Ltd.
     </td>
   </tr>
@@ -157,3 +157,39 @@ def rejection_html(req: LicenseRequest) -> str:
         + strip + _rows(rows)
     )
     return _shell("PMDM License 발급 결과", inner)
+
+
+def _button(label: str, url: str) -> str:
+    """눌러서 가는 버튼 — 아웃룩도 그리게 표 칸에 색을 칠한다."""
+    return (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">'
+            f'<tr><td bgcolor="{BRAND}" style="{FAMILY};background:{BRAND};border-radius:8px">'
+            f'<a href="{_e(url)}" target="_blank" style="{FAMILY};display:inline-block;padding:12px 26px;color:#ffffff;'
+            f'font-size:14px;font-weight:700;line-height:18px;text-decoration:none">{_e(label)} &rarr;</a>'
+            f'</td></tr></table>'
+            f'<div style="{FAMILY};color:{INK3};font-size:11.5px;line-height:17px;mso-line-height-rule:exactly;'
+            f'padding-top:6px;word-break:break-all">{_e(url)}</div>{gap(20)}')
+
+
+def request_html(req: LicenseRequest, review_url: str) -> str:
+    """최종 승인자에게 — 신청이 들어왔다. 버튼은 검수 화면(인증서를 보고 승인 · 반려)."""
+    strip, rows = _common(req)
+    inner = (
+        f'<p style="{FONT};margin:0 0 6px">안녕하세요.</p>'
+        f'<p style="{FONT};margin:0">{_e(req.created_by_name)} 님이 PMDM License 발급을 신청했습니다.</p>{gap(18)}'
+        + _banner_info("License 발급 승인 요청", f"{req.company_name} · {_qty(req.quantity)} EA")
+        + strip + _rows(rows)
+        + (_box("신청 메모", req.note, BRAND_DARK, SOFT) if (req.note or "").strip() else "")
+        + _button("검수 화면에서 인증서 확인하기", review_url)
+    )
+    return _shell("PMDM License 승인 요청", inner)
+
+
+def _banner_info(title: str, sub: str) -> str:
+    """요청 띠 — 파랑(결정을 기다리는 일)."""
+    return (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
+            f'style="border-collapse:collapse;width:100%"><tr>'
+            f'<td style="{FAMILY};background:#eaf0ff;border-left:4px solid {BRAND};padding:14px 18px">'
+            f'<div style="{FAMILY};color:{BRAND_DARK};font-size:16px;line-height:22px;mso-line-height-rule:exactly;'
+            f'font-weight:700">&#9679;&nbsp; {_e(title)}</div>'
+            f'<div style="{FAMILY};color:{INK2};font-size:12.5px;line-height:18px;mso-line-height-rule:exactly">'
+            f'{_e(sub)}</div></td></tr></table>{gap(18)}')
