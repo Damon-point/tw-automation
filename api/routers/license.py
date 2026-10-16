@@ -380,7 +380,7 @@ def _send_result(r: LicenseRequest, kind: str, pdf: bytes | None, u: dict, *, re
         return {"ok": False, "error": "받는 사람 이메일이 없습니다"}
     m = mailer.build_approval(r, pdf is not None) if kind == "approval" else mailer.build_rejection(r)
     att = [(f"{r.doc_id}_License_Certificate.pdf", pdf)] if (kind == "approval" and pdf) else None
-    ok, err = user_mailer.send_as_user(u["id"], to, m["subject"].strip(), m["body"], att)
+    ok, err = user_mailer.send_as_user(u["id"], to, m["subject"].strip(), m["body"], att, html=m.get("html", ""))
     _log_mail(r.doc_id, {"at": datetime.now().isoformat(timespec="seconds"), "kind": kind, "to": to,
                          "by": u.get("username", ""), "ok": ok, "error": err, "resend": resend,
                          "attached": bool(att), "shadow": not shadow.area_live("license")})

@@ -557,7 +557,7 @@ def send_as_user(
     attachments: "list[tuple[str, bytes]] | None" = None,
     *, in_reply_to: str = "", references: str = "", cc: "list[str] | str | None" = None,
     app_marker: str = "1", quote: str = "", quote_html: str = "",
-    signature: str = "", as_system: bool = False,
+    signature: str = "", as_system: bool = False, html: str = "",
 ) -> tuple[bool, str]:
     """메일 발송. 보내는 사람 표시는 as_system 이 가른다.
 
@@ -660,7 +660,8 @@ def send_as_user(
         msg["References"] = (f"{ref} {mid}".strip()) if ref else mid
     # 회신이면 원본을 본문 아래에 인용해 붙인다 — 새로 쓴 몇 줄만 가면 받는 사람이
     # 무엇에 대한 답인지 알 수 없다(사용자 지적 2026-08-19).
-    _sig = signature or _pf_sig
+    # html: 다 만든 HTML 본문(안내 메일 양식). 주면 그대로 싣고 개인 서명은 붙이지 않는다.
+    _sig = "" if html else (signature or _pf_sig)
     plain = body
     if _sig:
         plain = plain.rstrip() + chr(10) * 2 + html_to_text(_sig)
@@ -671,8 +672,7 @@ def send_as_user(
     # **모든 메일에** 함께 싣는다. 평문만 보내면 글꼴도 구분선도 없이 밋밋하게 뜬다
     # (사용자 지적 2026-08-19).
     msg.add_alternative(
-        build_html_mail(body, quote=quote_html,
-                        signature=(signature or _pf_sig)),
+        html or build_html_mail(body, quote=quote_html, signature=(signature or _pf_sig)),
         subtype="html")
     for fname, data in attachments or []:
         msg.add_attachment(data, maintype="application", subtype="octet-stream", filename=fname)

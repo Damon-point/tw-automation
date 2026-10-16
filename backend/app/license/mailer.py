@@ -18,8 +18,10 @@ def build_approval(req: LicenseRequest, has_pdf: bool = True) -> dict:
         수량=req.quantity, 승인자=req.confirm_by, 메모=req.admin_note or "-",
         첨부안내=("라이선스 인증서(License Key 포함)가 PDF 로 첨부되어 있습니다."
                 if has_pdf else "라이선스 문서는 별도 안내드립니다."))
+    from app.license.mail_html import approval_html
+
     return {"to": req.recipient_email or req.contact_email,
-            "subject": subject, "body": body}
+            "subject": subject, "body": body, "html": approval_html(req, has_pdf)}
 
 
 def build_rejection(req: LicenseRequest) -> dict:
@@ -29,5 +31,7 @@ def build_rejection(req: LicenseRequest) -> dict:
     subject, body = MT.render(
         "license_rejection", 문서번호=req.doc_id, 회사=req.company_name,
         반려자=req.confirm_by, 사유=req.admin_note or "-")
+    from app.license.mail_html import rejection_html
+
     return {"to": req.recipient_email or req.contact_email,
-            "subject": subject, "body": body}
+            "subject": subject, "body": body, "html": rejection_html(req)}
