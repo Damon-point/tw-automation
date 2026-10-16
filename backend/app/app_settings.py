@@ -26,6 +26,9 @@ _DEFS: dict[str, tuple[str, str, tuple[str, ...]]] = {
     #   0 — 검증 모드: 메일·Dropbox·파일서버·FOTA·Portal·Confluence·Mailchimp 에 보내지 않고 기록만 한다
     #   1 — 운영: 실제로 쓴다
     "live_writes": ("TWN_LIVE_WRITES", "0", ("0", "1")),
+    # live_writes=0 이어도 실제로 쓰는 영역(2026-10-16~). OS Update 는 8080 에 남아 있어 계속 막는다.
+    #   whitelist — WhiteList · DQA 화면과 그 자동 작업 / license — PMDM License
+    "live_areas": ("TWN_LIVE_AREAS", "none", ("none", "whitelist", "license", "whitelist,license")),
 }
 
 _lock = threading.Lock()

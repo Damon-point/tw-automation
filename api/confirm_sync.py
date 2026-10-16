@@ -210,7 +210,9 @@ def _apply_license(d: dict) -> dict:
     if not user:
         return {"id": d["id"], "ok": False, "message": f"3080 에 {d['decided_by']} 계정이 없습니다"}
     try:
-        with R._DECIDE_LOCK:
+        from app import shadow
+
+        with R._DECIDE_LOCK, shadow.area("license"):
             res = (LR.decide_approve if d["status"] == "approved" else LR.decide_reject)(doc_id, d.get("note") or "", user)
     except HTTPException as e:
         return {"id": d["id"], "ok": False, "message": str(e.detail)}

@@ -159,7 +159,9 @@ def start(key: str, user_id: int, plan, workdir: str, label: str = "") -> tuple[
             "logs": [], "error": "",
             "downloaded": {}, "uploaded": False, "dp": {},
         }
-    t = threading.Thread(target=_run, args=(key, user_id, plan, workdir),
+    from app import shadow
+
+    t = threading.Thread(target=shadow.carry(_run), args=(key, user_id, plan, workdir),
                          name=f"dqa-fota-{key}", daemon=True)
     t.start()
     return True, ""

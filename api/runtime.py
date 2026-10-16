@@ -89,14 +89,21 @@ def start() -> None:
         B._warm_os_update_sync()
 
     _loop("mail_sync", B.SYNC_INTERVAL_SEC, B.SYNC_INTERVAL_SEC, tick)
+    from app import shadow
+
+    def wl_poll() -> None:
+        with shadow.area("whitelist"):
+            B.whitelist_poll_once()
+
     if getattr(B, "WL_POLL_ENABLED", False):
-        _loop("whitelist_poll", B.WL_POLL_SEC, 25, B.whitelist_poll_once)
+        _loop("whitelist_poll", B.WL_POLL_SEC, 25, wl_poll)
     # Redmine 수집 · Solution Buffer 는 별도 프로젝트(pointmobile-faq, 3070)로 옮겼다(2026-10-14) — 여기서는 돌리지 않는다.
 
     def license_scan() -> None:
         import license_inbox
 
-        license_inbox.scan()
+        with shadow.area("license"):
+            license_inbox.scan()
 
     _loop("license_inbox", 120, 40, license_scan)
 

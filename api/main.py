@@ -59,6 +59,17 @@ async def _lifespan(_app):
 
 
 app = FastAPI(title="tw-automation-v2 api", docs_url=None, redoc_url=None, lifespan=_lifespan)
+@app.middleware("http")
+async def _area_of_request(request: Request, call_next):
+    """영역 표시 — 운영 중인 영역(live_areas)의 외부 쓰기만 검증 모드를 지나간다(app.shadow)."""
+    p = request.url.path
+    name = "whitelist" if p.startswith("/api/whitelist") else "license" if p.startswith("/api/license") else ""
+    if not name:
+        return await call_next(request)
+    with shadow.area(name):
+        return await call_next(request)
+
+
 app.add_middleware(SessionMiddleware, secret_key=SECRET, session_cookie="twn_session",
                    max_age=60 * 60 * 12, same_site="lax", https_only=False)
 
@@ -532,7 +543,24 @@ class LiveIn(BaseModel):
 @app.get("/api/shadow")
 def shadow_log(request: Request, limit: int = 200):
     _user(request)
-    return {"live": shadow.live(), "writes": shadow.recent(min(limit, 1000)), "runtime": runtime.status}
+    return {"live": shadow.live(), "live_areas": sorted(shadow.live_areas()), "areas": list(shadow.AREAS),
+            "writes": shadow.recent(min(limit, 1000)), "runtime": runtime.status}
+
+
+class AreasIn(BaseModel):
+    areas: list[str]
+
+
+@app.post("/api/shadow/areas")
+def shadow_set_areas(body: AreasIn, request: Request):
+    """영역별 운영 — WhiteList(DQA 포함) · License 만 실제로 쓰고 나머지(OS Update)는 계속 막는다."""
+    u = _user(request)
+    if u.get("role") != "admin":
+        raise HTTPException(403, "관리자만 바꿀 수 있습니다")
+    picked = [a for a in shadow.AREAS if a in body.areas]
+    app_settings.set("live_areas", ",".join(picked) or "none", by=u["username"])
+    shadow.record("system", "영역 운영: " + (", ".join(picked) or "없음"), by=u["username"])
+    return {"live_areas": sorted(shadow.live_areas())}
 
 
 @app.post("/api/shadow/live")

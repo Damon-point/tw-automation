@@ -366,7 +366,10 @@ def _notify_if_due() -> None:
         except Exception:  # noqa: BLE001
             _log("OS Update 회차 알림 오류\n" + traceback.format_exc())
 
-        res = send_whitelist_notice()
+        from app import shadow
+
+        with shadow.area("whitelist"):
+            res = send_whitelist_notice()
         if res["error"]:
             # 설정 문제(수신자·발송계정 미등록)는 고쳐질 때까지 계속 실패하므로
             # **표시하지 않고 다음 주기에 재시도**한다. 다만 60초마다 같은 줄이
