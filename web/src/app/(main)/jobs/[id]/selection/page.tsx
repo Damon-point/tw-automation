@@ -120,6 +120,9 @@ function SelectionEditor() {
   if (error) return <div className="rounded-lg bg-err-soft px-4 py-3 text-sm text-err">{error}</div>;
   if (!data) return <Skeleton rows={8} />;
 
+  // 비고(미반영 사유)는 RN for Sales 를 만들 때만 쓴다 — 전체 이력 RN 단계(1차 승인 전, with_full)에서는 열을 뺀다(2026-10-19)
+  const showNote = !data.with_full;
+  const cols = showNote ? "lg:grid-cols-[52px_92px_minmax(0,1fr)_minmax(0,1.15fr)_150px]" : "lg:grid-cols-[52px_92px_minmax(0,1fr)_minmax(0,1.15fr)]";
   const FILTERS: [Filter, string, number][] = [
     ["all", "전체", rows.length], ["Y", "반영", nY], ["X", "미반영", rows.length - nY], ["changed", "고친 것", rows.filter(changed).length],
   ];
@@ -154,9 +157,6 @@ function SelectionEditor() {
         </div>
       )}
 
-      <InputFields fields={fields} orig={origF} editable={data.inputs.editable} nowVersion={data.inputs.now_version}
-                   locked={locked} onChange={setFields} />
-
       <div className="sticky top-0 z-20 -mx-1 mb-3 flex flex-wrap items-center gap-2 bg-bg/95 px-1 py-2 backdrop-blur">
         <div className="flex rounded-lg border border-line bg-surface p-0.5">
           {FILTERS.map(([f, label, n]) => (
@@ -174,8 +174,8 @@ function SelectionEditor() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="hidden grid-cols-[52px_92px_minmax(0,1fr)_minmax(0,1.15fr)_150px] gap-3 border-b border-line bg-surface-2 px-4 py-2 text-[11.5px] font-bold uppercase tracking-wide text-ink-3 lg:grid">
-          <span>No</span><span>반영</span><span>이슈</span><span>수정 내용 (RN 문구)</span><span>비고</span>
+        <div className={cx("hidden gap-3 border-b border-line bg-surface-2 px-4 py-2 text-[11.5px] font-bold uppercase tracking-wide text-ink-3 lg:grid", cols)}>
+          <span>No</span><span>반영</span><span>이슈</span><span>수정 내용 (RN 문구)</span>{showNote && <span>비고</span>}
         </div>
         {shown.length === 0 ? <Empty>{rows.length ? "조건에 맞는 행이 없습니다" : "선별 데이터가 없습니다. 전체 이력 RN 제작을 실행하면 채워집니다."}</Empty> : shown.map((r) => {
           const on = r.include === "Y";
@@ -183,7 +183,7 @@ function SelectionEditor() {
           const k = String(r.no);
           const ch = changed(r);
           return (
-            <div key={k} className={cx("grid grid-cols-1 gap-3 border-b border-line px-4 py-3 last:border-b-0 lg:grid-cols-[52px_92px_minmax(0,1fr)_minmax(0,1.15fr)_150px]",
+            <div key={k} className={cx("grid grid-cols-1 gap-3 border-b border-line px-4 py-3 last:border-b-0", cols,
               !on && "bg-surface-2/70", ch && "shadow-[inset_3px_0_0_var(--color-brand)]")}>
               <div className="flex items-center gap-2 pt-1 font-mono text-[12.5px] text-ink-3 lg:block">{r.no}{ch && <span className="text-[10.5px] font-sans font-bold text-brand lg:block">수정</span>}</div>
               <div>
@@ -207,6 +207,12 @@ function SelectionEditor() {
                       {r.team && <span>{r.team}</span>}
                       {r.customer && <span>· {r.customer}</span>}
                       {r.redmine?.startsWith("http") && <a href={r.redmine} target="_blank" rel="noreferrer" className="font-mono text-brand-ink hover:underline">#{r.redmine.split("/").pop()}</a>}
+                      {(r.merged ?? []).length > 0 && (
+                        <span className="inline-flex flex-wrap items-center gap-1 rounded bg-info-soft px-1.5 py-0.5 text-info" title="Redmine 에서 서로 연결된 같은 문제 — 한 행으로 묶었습니다">
+                          함께 묶인 이슈
+                          {(r.merged ?? []).map((m) => <a key={m.id} href={m.redmine} target="_blank" rel="noreferrer" title={m.subject} className="font-mono font-semibold hover:underline">#{m.id}</a>)}
+                        </span>
+                      )}
                       {r.reason && <button onClick={() => setOpenReason(openReason === k ? "" : k)} className="text-brand-ink hover:underline">{openReason === k ? "판정 사유 접기" : "판정 사유"}</button>}
                     </div>
                     {openReason === k && <div className="mt-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink-2">{r.reason}</div>}
@@ -225,17 +231,25 @@ function SelectionEditor() {
                   <button onClick={() => setRows((rs) => rs.filter((x) => x !== r))} className="mt-1 rounded-md p-1.5 text-ink-3 hover:bg-err-soft hover:text-err" aria-label="행 삭제">✕</button>
                 )}
               </div>
-              <div>
-                {!on && !r.manual ? (
-                  <select value={r.exclude_note ?? ""} disabled={locked} onChange={(e) => saveNote(r, e.target.value)} className={cx(inputCls, "py-1.5")}>
-                    <option value="">사유 없음</option>
-                    {data.exclude_notes.map((n) => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                ) : <span className="text-[12px] text-ink-3">—</span>}
-              </div>
+              {showNote && (
+                <div>
+                  {!on && !r.manual ? (
+                    <select value={r.exclude_note ?? ""} disabled={locked} onChange={(e) => saveNote(r, e.target.value)} className={cx(inputCls, "py-1.5")}>
+                      <option value="">사유 없음</option>
+                      {data.exclude_notes.map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  ) : <span className="text-[12px] text-ink-3">—</span>}
+                </div>
+              )}
             </div>
           );
         })}
+      </div>
+
+      {/* 입력 값은 공개 선별표 다음(2026-10-19 사용자 요청 — 선별표가 먼저) */}
+      <div className="mt-5">
+        <InputFields fields={fields} orig={origF} editable={data.inputs.editable} nowVersion={data.inputs.now_version}
+                     locked={locked} onChange={setFields} />
       </div>
 
       {!locked && (

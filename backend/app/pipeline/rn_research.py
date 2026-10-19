@@ -2825,6 +2825,20 @@ def run_rn_research(
         progress.step(f"관계 이슈 추가 읽는 중… ({len(rel_ids)}건)")
         related_map, _ = RM.get_issues(user_id, rel_ids)
 
+    # 2-2) 이번 목록 안에서 서로 연결된 이슈는 한 행으로 묶는다(대표 = 먼저 나온 이슈).
+    #      나머지는 대표 행의 merged 로 남겨 검수 화면이 링크로 보여 준다(2026-10-19).
+    from app.pipeline import rn_select as _RSEL_G
+
+    merged_of: dict[str, list[dict]] = {}
+    _groups = _RSEL_G.related_groups(ordered)
+    if any(len(g) > 1 for g in _groups):
+        merged_of = {str(g[0]["id"]): g[1:] for g in _groups if len(g) > 1}
+        _n_m = sum(len(v) for v in merged_of.values())
+        progress.step(f"서로 연결된 이슈 {_n_m}건을 대표 이슈 {len(merged_of)}건에 묶음")
+        cap_warn += (f"연결된 이슈 {_n_m}건을 대표 이슈 {len(merged_of)}건에 묶었습니다 — "
+                     + ", ".join(f"#{k}←" + "·".join(f"#{x['id']}" for x in v) for k, v in merged_of.items()) + "\n")
+        ordered = [g[0] for g in _groups]
+
     # 3) 청크 요약 → items(rows + 고객용 change) (rate limit 대응, 실패 시 raw 폴백)
     # 최초 출시면 Claude 를 한 번도 부르지 않는다 — 클라이언트도 만들지 않는다.
     client = None if first_release else anthropic.Anthropic()
@@ -2908,6 +2922,10 @@ def run_rn_research(
             "public": _public, "redmine": _row[7],
             # 민감 판정(하이라이트) + 수정 내용(RN 에 실릴 문구; 사람이 고쳐 쓸 수 있다).
             "sensitive": bool(_c.get("sensitive")), "apply_note": _note,
+            # 이 행에 묶인 연결 이슈(같은 문제를 따로 올린 것) — 검수 화면이 링크로 보여 준다
+            "merged": [{"id": str(m["id"]), "subject": m.get("subject", ""),
+                        "redmine": _row[7].rsplit("/", 1)[0] + "/" + str(m["id"])}
+                       for m in merged_of.get(str(_iss["id"]), [])],
         })
     # ── 이슈 번호가 없는 배포 공지 항목도 선별표에 올린다 ────────────────────
     # 'SPL: Update SPL to 2026-06-05' 처럼 번호 없이 문구만 적힌 것들이다. Redmine 이

@@ -34,6 +34,8 @@ export type SelRow = {
   no: number | string; issue: string; team?: string; customer?: string; gubun?: string;
   include: "Y" | "X"; reason?: string; public?: string; redmine?: string; sensitive?: boolean;
   apply_note: string; exclude_note?: string; kind?: string; manual?: boolean;
+  /** Redmine 에서 서로 연결돼 이 행에 묶인 이슈 */
+  merged?: { id: string; subject: string; redmine: string }[];
 };
 export type Selection = {
   rows: SelRow[]; edited_at: string; edited_by: string; mid: string; final: string;

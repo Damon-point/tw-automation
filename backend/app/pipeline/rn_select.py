@@ -547,6 +547,42 @@ def normalize_rows(rows: "list[dict] | None", *, edited: bool = True) -> list[di
     return out
 
 
+def related_groups(ordered: list[dict]) -> list[list[dict]]:
+    """이번 목록 안에서 Redmine 으로 서로 연결된 이슈를 한 덩어리로 — 사슬(A–B–C)도 하나로 묶는다.
+
+    같은 문제를 영업 이슈(Sales_Issues)와 개발 이슈로 따로 올리고 서로 '관련' 으로 이어 두는 일이 많다.
+    둘 다 선별표에 오르면 검수자가 같은 내용을 두 번 판단해야 했다(2026-10-19 사용자 지적, 실측 job-34:
+    #34294↔#34369 · #33729↔#33554). 관계 종류(관련 · 중복 · 복사 · 선후)는 가리지 않는다.
+    덩어리 순서와 덩어리 안 순서는 원래 목록 순서 — 첫 이슈가 대표다.
+    """
+    ids = [str(i["id"]) for i in ordered]
+    inset = set(ids)
+    parent = {i: i for i in ids}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for iss in ordered:
+        a = str(iss["id"])
+        for r in iss.get("relations") or []:
+            b = str(r.get("id") or "")
+            if b in inset and b != a:
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    # 목록에서 먼저 나온 쪽을 뿌리로 — 대표가 늘 첫 이슈가 되게
+                    if ids.index(ra) < ids.index(rb):
+                        parent[rb] = ra
+                    else:
+                        parent[ra] = rb
+    groups: dict[str, list[dict]] = {}
+    for iss in ordered:
+        groups.setdefault(find(str(iss["id"])), []).append(iss)
+    return list(groups.values())
+
+
 def build_selection(ordered: list[dict], classified: dict,
                     include_all: bool = False,
                     carry: dict | None = None) -> tuple[list[list], list[str]]:
