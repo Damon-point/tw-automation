@@ -48,6 +48,8 @@ export type ShadowResp = {
   /** live 가 아니어도 실제로 쓰는 영역(whitelist · license) */
   live_areas: string[];
   areas: string[];
+  /** 테스트 모드 — 메일 발송 끔 */
+  test_mode: boolean;
   writes: ShadowWrite[];
   runtime: { started_at: string; loops: Record<string, { ok: boolean; at: string; error?: string }> };
 };

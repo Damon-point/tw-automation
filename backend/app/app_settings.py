@@ -29,6 +29,8 @@ _DEFS: dict[str, tuple[str, str, tuple[str, ...]]] = {
     # live_writes=0 이어도 실제로 쓰는 영역(2026-10-16~). OS Update 는 8080 에 남아 있어 계속 막는다.
     #   whitelist — WhiteList · DQA 화면과 그 자동 작업 / license — PMDM License
     "live_areas": ("TWN_LIVE_AREAS", "none", ("none", "whitelist", "license", "whitelist,license")),
+    # 테스트 모드(관리자, 2026-10-19) — 켜면 메일을 하나도 보내지 않는다(운영 중인 영역이어도). 보내려던 것은 기록만.
+    "test_mode": ("TWN_TEST_MODE", "0", ("0", "1")),
 }
 
 _lock = threading.Lock()

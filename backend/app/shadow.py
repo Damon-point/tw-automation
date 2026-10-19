@@ -93,8 +93,22 @@ def record(system: str, action: str, **detail) -> None:
         pass
 
 
+def test_mode() -> bool:
+    """테스트 모드 — 켜져 있으면 메일은 어떤 경우에도 보내지 않는다(설정을 못 읽으면 꺼진 것으로)."""
+    try:
+        from app import app_settings
+
+        return app_settings.get("test_mode") == "1"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def blocked(system: str, action: str, **detail) -> bool:
-    """검증 모드면 기록하고 True(=보내지 말 것). 운영 중인 영역(live_areas)의 쓰기는 통과."""
+    """검증 모드면 기록하고 True(=보내지 말 것). 운영 중인 영역(live_areas)의 쓰기는 통과.
+    테스트 모드면 메일은 운영 · 영역과 상관없이 막는다."""
+    if system == "mail" and test_mode():
+        record(system, action, area=_area.get() or "-", test_mode=True, **detail)
+        return True
     if live():
         return False
     a = _area.get()

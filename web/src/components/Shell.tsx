@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api, useApi, type Home, type Me } from "@/lib/api";
 import { Icon } from "./Icons";
@@ -30,6 +31,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const me = useApi<Me>("/api/me");
+  // 설정에서 테스트 모드 · 운영 상태를 바꾸면 위 띠를 바로 다시 그린다
+  const reloadMe = me.reload;
+  useEffect(() => {
+    const h = () => reloadMe();
+    window.addEventListener("twn-me", h);
+    return () => window.removeEventListener("twn-me", h);
+  }, [reloadMe]);
   const home = useApi<Home>("/api/home", 30_000);
 
   async function logout() {
@@ -86,6 +94,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <main className="min-w-0">
+        {me.data?.test_mode && (
+          <Link href="/settings/shadow" className="block border-b border-[#d9c2ff] bg-[#f5efff] px-4 py-2 text-[13px] text-[#5b2bb5] lg:px-8 dark:border-[#4a2d80] dark:bg-[#21163a] dark:text-[#c9b0ff]">
+            <b>테스트 모드</b> — 메일을 보내지 않습니다. 보내려던 메일은 기록에 남습니다. 설정 →
+          </Link>
+        )}
         {me.data && !me.data.live && !areaLive(path, me.data.live_areas ?? []) && (
           <Link href="/settings/shadow" className="block border-b border-[#f2d49b] bg-[#fff7e6] px-4 py-2 text-[13px] text-[#8a5a00] lg:px-8 dark:border-[#5a4310] dark:bg-[#2a2210] dark:text-[#f0c36a]">
             <b>검증 모드</b> — 메일·Dropbox·FOTA·Portal·Confluence 에 실제로 쓰지 않고 기록만 합니다

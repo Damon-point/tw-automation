@@ -45,6 +45,21 @@ export default function ShadowPage() {
   }, [writes]);
   const rows = writes.filter((w) => (!sys || w.system === sys) && (!q || JSON.stringify(w).toLowerCase().includes(q.toLowerCase())));
 
+  async function switchTest(on: boolean) {
+    setBusy(true);
+    try {
+      await send("/api/shadow/test-mode", { on });
+      toast(on ? "테스트 모드를 켰습니다 — 메일을 보내지 않습니다" : "테스트 모드를 껐습니다 — 메일을 보냅니다");
+      reload();
+      me.reload();
+      window.dispatchEvent(new Event("twn-me"));
+    } catch (e) {
+      toast(errText(e), "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function switchArea(a: string, on: boolean) {
     setBusy(true);
     try {
@@ -68,6 +83,7 @@ export default function ShadowPage() {
       setTyped("");
       reload();
       me.reload();
+      window.dispatchEvent(new Event("twn-me"));
     } catch (e) {
       toast(errText(e), "err");
     } finally {
@@ -79,6 +95,17 @@ export default function ShadowPage() {
   const live = data.live;
   return (
     <>
+      <Section title="테스트 모드" desc="켜면 메일 발송을 모두 끕니다 — 운영 중인 영역이어도, 검수 웹에서 결정해도 메일은 나가지 않고 아래 기록에만 남습니다. FOTA 등록 · 파일 저장 같은 다른 쓰기는 그대로입니다."
+               right={isAdmin && (data.test_mode
+                 ? <Button variant="outline" busy={busy} onClick={() => switchTest(false)}>테스트 모드 끄기</Button>
+                 : <Button variant="danger" busy={busy} onClick={() => switchTest(true)}>테스트 모드 켜기</Button>)}>
+        <span className={cx("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[13.5px] font-bold",
+          data.test_mode ? "bg-[#f1e8ff] text-[#5b2bb5] dark:bg-[#2d1f4d] dark:text-[#c9b0ff]" : "bg-surface-2 text-ink-2")}>
+          <span className={cx("h-2 w-2 rounded-full", data.test_mode ? "bg-[#7c3aed]" : "bg-ink-3")} />
+          {data.test_mode ? "켜짐 — 메일을 보내지 않습니다" : "꺼짐 — 메일을 보냅니다"}
+        </span>
+      </Section>
+
       <Section title="운영 상태"
                desc="8080 과 같은 Dropbox·FOTA·Portal·Confluence·메일을 함께 쓰므로, 검증 모드에서는 외부로 나가는 쓰기를 마지막 단계에서 막고 무엇을 보내려 했는지만 남깁니다."
                right={isAdmin && (live

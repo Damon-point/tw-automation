@@ -75,7 +75,7 @@ export function useApi<T>(path: string | null, refreshMs?: number | ((d: T | nul
 
 export type Tone = "ok" | "warn" | "error" | "none";
 export type Summary = { tone: Tone; headline: string; errors: string[]; warnings: string[]; ok_count: number };
-export type Me = { id: number; username: string; role: string; legacy_url: string; live: boolean; live_areas?: string[] };
+export type Me = { id: number; username: string; role: string; legacy_url: string; live: boolean; live_areas?: string[]; test_mode?: boolean };
 
 export type StageItem = {
   job_id: number; product: string; android: string; os_type: string; version: string;

@@ -129,7 +129,8 @@ def dev_login(request: Request):
 @app.get("/api/me")
 def me(request: Request):
     u = _user(request)
-    return {**u, "legacy_url": LEGACY_URL, "live": shadow.live(), "live_areas": sorted(shadow.live_areas())}
+    return {**u, "legacy_url": LEGACY_URL, "live": shadow.live(), "live_areas": sorted(shadow.live_areas()),
+            "test_mode": shadow.test_mode()}
 
 
 # ── 공통 ───────────────────────────────────────────────────────────────────────
@@ -553,7 +554,23 @@ class LiveIn(BaseModel):
 def shadow_log(request: Request, limit: int = 200):
     _user(request)
     return {"live": shadow.live(), "live_areas": sorted(shadow.live_areas()), "areas": list(shadow.AREAS),
+            "test_mode": shadow.test_mode(),
             "writes": shadow.recent(min(limit, 1000)), "runtime": runtime.status}
+
+
+class TestModeIn(BaseModel):
+    on: bool
+
+
+@app.post("/api/shadow/test-mode")
+def shadow_set_test_mode(body: TestModeIn, request: Request):
+    """테스트 모드(관리자) — 켜면 메일 발송을 모두 끈다. 그 밖의 쓰기(FOTA · 파일 등)는 그대로."""
+    u = _user(request)
+    if u.get("role") != "admin":
+        raise HTTPException(403, "관리자만 바꿀 수 있습니다")
+    app_settings.set("test_mode", "1" if body.on else "0", by=u["username"])
+    shadow.record("system", "테스트 모드 켬 — 메일 발송 끔" if body.on else "테스트 모드 끔 — 메일 발송", by=u["username"])
+    return {"test_mode": shadow.test_mode()}
 
 
 class AreasIn(BaseModel):
