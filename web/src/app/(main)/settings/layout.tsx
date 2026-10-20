@@ -45,7 +45,6 @@ const GROUPS: { title: string; items: Item[] }[] = [
     title: "기록 · 조회",
     items: [
       { href: "/usage", label: "Claude 사용량" },
-      { href: "/excel", label: "FOTA-DB 열람" },
     ],
   },
   { title: "내 계정", items: [{ href: "/settings/password", label: "비밀번호 변경" }] },
