@@ -79,6 +79,17 @@ export default function FotaDbPage() {
       <Card pad={false}>
         {!cur ? (busy ? <Skeleton rows={8} /> : <Empty>{tab.label} 표를 불러오지 못했습니다 — [새로 불러오기]</Empty>) : rows.length ? (
           <>
+            {/* 페이지 막대 — 열 이름 위, 스크롤해도 화면 위에 붙어 있다(2026-10-21) */}
+            <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-line bg-surface/95 px-4 py-2 text-[12.5px] text-ink-3 backdrop-blur">
+              <span>{(page * PAGE + 1).toLocaleString()}–{Math.min(rows.length, page * PAGE + PAGE).toLocaleString()} / {rows.length.toLocaleString()}건{q && ` (전체 ${cur.rows.length.toLocaleString()})`}</span>
+              <span className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setPage(0)}>처음</Button>
+                <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>이전</Button>
+                <span className="tabular-nums">{page + 1} / {pages}</span>
+                <Button variant="ghost" size="sm" disabled={page + 1 >= pages} onClick={() => setPage((p) => p + 1)}>다음</Button>
+                <Button variant="ghost" size="sm" disabled={page + 1 >= pages} onClick={() => setPage(pages - 1)}>마지막</Button>
+              </span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-[12.5px]">
                 <thead>
@@ -106,16 +117,6 @@ export default function FotaDbPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
-            <div className="flex items-center justify-between border-t border-line px-4 py-2 text-[12.5px] text-ink-3">
-              <span>{(page * PAGE + 1).toLocaleString()}–{Math.min(rows.length, page * PAGE + PAGE).toLocaleString()} / {rows.length.toLocaleString()}건{q && ` (전체 ${cur.rows.length.toLocaleString()})`}</span>
-              <span className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setPage(0)}>처음</Button>
-                <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>이전</Button>
-                <span className="tabular-nums">{page + 1} / {pages}</span>
-                <Button variant="ghost" size="sm" disabled={page + 1 >= pages} onClick={() => setPage((p) => p + 1)}>다음</Button>
-                <Button variant="ghost" size="sm" disabled={page + 1 >= pages} onClick={() => setPage(pages - 1)}>마지막</Button>
-              </span>
             </div>
           </>
         ) : <Empty>맞는 행이 없습니다</Empty>}
