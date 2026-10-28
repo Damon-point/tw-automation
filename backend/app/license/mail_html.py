@@ -90,8 +90,8 @@ def _box(label: str, text: str, color: str, bg: str) -> str:
             f'{body}</div></td></tr></table>{gap(18)}')
 
 
-def _shell(title: str, inner: str) -> str:
-    """겉틀 — 파란 머리(로고) · 본문 · 꼬리. 640px 표."""
+def _shell(title: str, inner: str, source: str = "PMDM License") -> str:
+    """겉틀 — 파란 머리(로고) · 본문 · 꼬리. 640px 표. source: 꼬리에 적는 보낸 곳(정기 알림도 이 틀을 쓴다)."""
     year = datetime.now().year
     return f"""<div style="margin:0;padding:28px 12px;background:#eef2f9;{FONT}">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="640" style="width:100%;max-width:640px;margin:0 auto;border-collapse:collapse;background:#ffffff;border:1px solid {LINE}">
@@ -109,7 +109,7 @@ def _shell(title: str, inner: str) -> str:
   <tr><td style="padding:24px 22px 8px;{FONT};line-height:21px;mso-line-height-rule:exactly">{inner}</td></tr>
   <tr>
     <td style="{FAMILY};padding:14px 22px 22px;border-top:1px solid {LINE};color:{INK3};font-size:11.5px;line-height:1.7">
-      TW Automation · PMDM License 에서 자동으로 보낸 메일입니다.<br>&copy; {year} Point Mobile Co., Ltd.
+      TW Automation · {_e(source)} 에서 자동으로 보낸 메일입니다.<br>&copy; {year} Point Mobile Co., Ltd.
     </td>
   </tr>
 </table>

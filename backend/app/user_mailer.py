@@ -558,6 +558,7 @@ def send_as_user(
     *, in_reply_to: str = "", references: str = "", cc: "list[str] | str | None" = None,
     app_marker: str = "1", quote: str = "", quote_html: str = "",
     signature: str = "", as_system: bool = False, html: str = "",
+    inline_images: "list[tuple[str, bytes, str, str]] | None" = None,
 ) -> tuple[bool, str]:
     """메일 발송. 보내는 사람 표시는 as_system 이 가른다.
 
@@ -674,6 +675,11 @@ def send_as_user(
     msg.add_alternative(
         html or build_html_mail(body, quote=quote_html, signature=(signature or _pf_sig)),
         subtype="html")
+    # 서명 배너처럼 본문이 cid: 로 가리키는 그림 — HTML 판에 묶어(multipart/related) 함께 싣는다.
+    if inline_images and not html:
+        hp = msg.get_payload()[-1]
+        for cid, data, maint, subt in inline_images:
+            hp.add_related(data, maintype=maint, subtype=subt, cid=f"<{cid}>")
     for fname, data in attachments or []:
         msg.add_attachment(data, maintype="application", subtype="octet-stream", filename=fname)
 

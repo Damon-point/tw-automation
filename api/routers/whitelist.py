@@ -468,7 +468,10 @@ def reply_draft(tid: str, body: DraftIn, request: Request):
     if body.kind == "dqa":
         if not name and addr:
             name = display_name_for(addr)
-        d = WM.build_dqa_reply_draft(to_name=name, subject_orig=rep.get("subject", ""))
+        from app.user_mailer import user_email
+
+        d = WM.build_dqa_reply_draft(to_name=name, subject_orig=rep.get("subject", ""),
+                                     intro=WM.learned_intro(user_email(user(request)["id"])))
         cc = _reply_ctx(g, True).get("cc", "")
     else:
         lang = WM.detect_lang(f"{rep.get('subject', '')}\n{rep.get('body_text', '')}")
@@ -480,8 +483,10 @@ def reply_draft(tid: str, body: DraftIn, request: Request):
         d = WM.build_reply_draft(to_name=name, devices=[{"sn": s, "model": models.get(s, "")} for s in sns],
                                  lang=lang, kind=body.kind, new_date=body.new_date,
                                  subject_orig=rep.get("subject", ""),
-                                 greeting=WM.learned_greeting(addr, user_email(u["id"])) if lang == "ko" else "")
-        cc = ""
+                                 greeting=WM.learned_greeting(addr, user_email(u["id"])) if lang == "ko" else "",
+                                 intro=WM.learned_intro(user_email(u["id"])))
+        # 실제 회신은 원본 참조인(유럽팀 · pm_ta 등)을 그대로 두는 전체 회신이다(2026-10 회신 8통 모두)
+        cc = _reply_ctx(g, True).get("cc", "")
     return {"to": addr, "cc": cc if isinstance(cc, str) else ", ".join(cc or []), **d}
 
 
@@ -497,13 +502,15 @@ class SendIn(BaseModel):
 @router.post("/threads/{tid}/reply-preview")
 def reply_preview(tid: str, body: SendIn, request: Request):
     u = user(request)
-    from app.user_mailer import build_html_mail, get_send_identity
+    from app.user_mailer import build_html_mail, get_send_identity, sender_profile, user_email
+    from app.whitelist import mailer as WM
 
     g = _find(tid)
     ident = get_send_identity(u["id"])
     ctx = _reply_ctx(g, body.with_cc)
-    doc = build_html_mail(body.body, quote=ctx.get("quote_html", ""),
-                          signature=(ident.signature if ident else ""))
+    # 보낼 때와 같은 서명 — 보내는 사람의 Outlook 서명(배너는 화면에서 보이게 data: 로)
+    sig = WM.signature_preview_html(WM.learned_signature(user_email(u["id"]))) or sender_profile(u["id"])[2]
+    doc = build_html_mail(body.body, quote=ctx.get("quote_html", ""), signature=sig)
     return {"from": ident.email if ident else "", "html": doc}
 
 

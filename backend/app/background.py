@@ -263,10 +263,12 @@ def send_whitelist_notice() -> dict:
     from app import mail_templates as MT
     from app.user_mailer import send_as_user
 
-    subject, body = MT.render(
-        "notice_whitelist", 건수=len(groups), 목록="\n".join(lines) + "\n",
-        화면주소=f"{os.getenv('TW_APP_URL', 'http://192.168.121.35:8080')}/whitelist")
-    ok, err = send_as_user(uid, to, subject, body, as_system=True)
+    from app.notice_html import whitelist_notice_html
+
+    url = f"{os.getenv('TW_APP_URL', 'http://192.168.121.35:8080')}/whitelist"
+    subject, body = MT.render("notice_whitelist", 건수=len(groups), 목록="\n".join(lines) + "\n", 화면주소=url)
+    # 결재 요청 메일과 같은 HTML 틀(2026-10-28) — 평문은 HTML 을 못 그리는 곳에서 보인다
+    ok, err = send_as_user(uid, to, subject, body, as_system=True, html=whitelist_notice_html(groups, url))
     if not ok:
         return {"sent": False, "threads": len(groups), "to": to, "error": err}
     _log(f"WhiteList 알림 발송: {len(groups)}건 → {', '.join(to)}")
@@ -329,10 +331,13 @@ def send_new_round_notice(only_new: bool = True) -> dict:
     from app import mail_templates as MT
     from app.user_mailer import send_as_user
 
+    from app.notice_html import osupdate_notice_html
+
     subject, body = MT.render("notice_osupdate", 건수=len(found),
                               화면주소=f"{base}/osupdate",
                               목록="\n".join(lines) + "\n")
-    ok, err = send_as_user(uid, to, subject, body, as_system=True)
+    ok, err = send_as_user(uid, to, subject, body, as_system=True,
+                           html=osupdate_notice_html(found, f"{base}/osupdate"))
     if not ok:
         return {"sent": False, "rounds": len(found), "to": to, "error": err}
     state["notified_rounds"] = keys

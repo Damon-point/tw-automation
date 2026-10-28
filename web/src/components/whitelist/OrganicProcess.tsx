@@ -138,7 +138,7 @@ export default function OrganicProcess({ t, onChanged }: { t: ThreadDetail; onCh
       )}
 
       {step === "reply" && (
-        <ReplyComposer tid={t.tid} canSend={t.is_admin && verifyItems.length > 0} note="유기적 처리"
+        <ReplyComposer tid={t.tid} withCc canSend={t.is_admin && verifyItems.length > 0} note="유기적 처리"
           draftReq={{ kind: verifyKind, new_date: verifyKind === "등록일 변경" ? newDate : "", sns: verifyItems.map((i) => i.sn) }}
           onSent={onChanged} onSkip={async () => { await post(`/api/wl/threads/${t.tid}/close?note=${encodeURIComponent("유기적 처리")}`); onChanged(); }} />
       )}

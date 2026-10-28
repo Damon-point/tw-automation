@@ -256,7 +256,7 @@ export default function SimpleProcess({ t, onChanged }: { t: ThreadDetail; onCha
       )}
 
       {step === "reply" && (
-        <ReplyComposer tid={t.tid} canSend={t.is_admin && (verifyItems.length > 0 || skipped)} requestId={reqId}
+        <ReplyComposer tid={t.tid} withCc canSend={t.is_admin && (verifyItems.length > 0 || skipped)} requestId={reqId}
           draftReq={{ kind: verifyKind, new_date: verifyKind === "등록일 변경" ? newDate : "", sns: doneSns.length ? doneSns : sel }}
           onSent={onChanged} />
       )}
