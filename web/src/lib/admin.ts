@@ -59,6 +59,8 @@ export type AccountsResp = { roles: Record<string, string>; users: Account[]; sy
 
 export type StaffRow = {
   id: number; name: string; email: string; status: string; is_dqa: boolean; is_handler: boolean; team: string; memo: string; updated_by?: string;
+  /** 회신 호칭 · 소개용 — '염서연' · '대리' */
+  name_ko: string; title: string;
 };
 
 export type MailTpl = {

@@ -28,6 +28,9 @@ class Base(DeclarativeBase):
 _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # 첫 로그인 비밀번호 변경 — 기존 계정은 0(변경 불필요)으로 남는다.
     ("users", "must_change_password", "INTEGER DEFAULT 0"),
+    # 사내 인원 명부 — 회신 호칭 · 소개에 쓰는 한글 이름 · 직책(2026-10-28)
+    ("staff", "name_ko", "VARCHAR(40) DEFAULT ''"),
+    ("staff", "title", "VARCHAR(40) DEFAULT ''"),
     # 계정별 메일 서명(Outlook 에서 붙여넣은 HTML).
     ("mail_credentials", "signature_html", "TEXT DEFAULT ''"),
     ("dropbox_credentials", "encrypted_app_key", "TEXT"),

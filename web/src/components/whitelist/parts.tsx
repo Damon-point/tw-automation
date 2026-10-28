@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Tag } from "@/components/ui";
-import { errText, post, type Draft, type UploadRow, type VerifyItem, type VerifyResult } from "@/lib/whitelist";
+import { errText, post, type Draft, type ReplyPerson, type UploadRow, type VerifyItem, type VerifyResult } from "@/lib/whitelist";
 import { Btn, Field, Input, Modal, Note, SubHead, Table, Textarea, useToast } from "./kit";
 
 /** 업로드 엑셀에 실제로 들어갈 행 — 열 이름·순서가 업로드 파일 머리와 같다 */
@@ -89,6 +89,50 @@ export function VerifyPanel({ items, kind, result, onResult }: {
   );
 }
 
+const SRC: Record<string, { label: string; tone?: "ok" | "warn" }> = {
+  roster: { label: "명부", tone: "ok" }, learned: { label: "지난 메일" }, fallback: { label: "영문 이름", tone: "warn" }, none: { label: "없음", tone: "warn" },
+};
+
+/** 회신 문구의 한 사람(호칭 · 소개) — 어디서 왔는지 보이고, 명부 값이 아니면 그 자리에서 명부에 저장한다 */
+function PersonLine({ label, text, p, fields, canSave, onSave }: {
+  label: string; text: string; p: ReplyPerson; canSave: boolean;
+  fields: { key: "name_ko" | "title" | "team"; label: string; value: string; ph: string }[];
+  onSave: (v: Record<string, string>) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [v, setV] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const s = SRC[p.source] ?? SRC.none;
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="inline-block w-16 text-ink-3">{label}</span>
+        <span className={text ? "" : "text-ink-3"}>{text || "—"}</span>
+        <Tag tone={s.tone}>{s.label}</Tag>
+        {canSave && p.source !== "roster" && !open && (
+          <button className="text-[12px] font-semibold text-brand hover:underline"
+                  onClick={() => { setV(Object.fromEntries(fields.map((f) => [f.key, f.value]))); setOpen(true); }}>
+            명부에 저장
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-1.5 flex flex-wrap items-end gap-2 pl-16">
+          {fields.map((f) => (
+            <label key={f.key} className="grid gap-0.5 text-[11.5px] text-ink-3">{f.label}
+              <Input className="h-8 w-28" value={v[f.key] ?? ""} placeholder={f.ph} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} />
+            </label>
+          ))}
+          <Btn small kind="primary" busy={busy} disabled={!(v.name_ko ?? "").trim()}
+               onClick={async () => { setBusy(true); try { await onSave(v); setOpen(false); } finally { setBusy(false); } }}>저장</Btn>
+          <Btn small kind="ghost" onClick={() => setOpen(false)}>취소</Btn>
+          <span className="w-full text-[11.5px] text-ink-3">{p.email}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 회신 — 초안을 받아 다듬고, 미리보기로 실제 서식(인용·서명)을 본 뒤 보낸다 */
 export function ReplyComposer({ tid, draftReq, withCc, requestId, note, canSend, onSent, onSkip }: {
   tid: string; draftReq: { kind: string; new_date?: string; sns?: string[] }; withCc?: boolean; requestId?: string;
@@ -100,6 +144,7 @@ export function ReplyComposer({ tid, draftReq, withCc, requestId, note, canSend,
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [prev, setPrev] = useState<{ from: string; html: string } | null>(null);
+  const [rev, setRev] = useState(0);
   const key = JSON.stringify(draftReq);
 
   useEffect(() => {
@@ -109,7 +154,16 @@ export function ReplyComposer({ tid, draftReq, withCc, requestId, note, canSend,
       setD(x); setSubject(x.subject); setBody(x.body);
     }).catch((e) => toast("error", errText(e)));
     return () => { off = true; };
-  }, [tid, key, toast]);
+  }, [tid, key, toast, rev]);
+
+  // 명부에 저장하면 초안을 다시 만든다 — 호칭 · 소개가 그 값으로 바뀐다(손댄 본문은 새 초안으로 바뀐다)
+  async function savePerson(email: string, v: Record<string, string>, name = "") {
+    try {
+      await post("/api/wl/staff-person", { email, name_ko: v.name_ko ?? "", title: v.title ?? "", team: v.team, name });
+      toast("ok", "명부에 저장했습니다");
+      setRev((n) => n + 1);
+    } catch (e) { toast("error", errText(e)); throw e; }
+  }
 
   async function preview() {
     try {
@@ -134,6 +188,18 @@ export function ReplyComposer({ tid, draftReq, withCc, requestId, note, canSend,
       <div className="grid gap-1 rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2">
         <div><span className="inline-block w-16 text-ink-3">받는 사람</span>{d.to || <span className="text-err">주소 없음</span>}</div>
         {withCc && <div><span className="inline-block w-16 text-ink-3">참조</span>{d.cc || "원본에 참조 없음"} <Tag>전체 회신</Tag></div>}
+        {d.people && (
+          <>
+            <PersonLine label="호칭" text={d.people.to.greeting} p={d.people.to} canSave={canSend}
+              fields={[{ key: "name_ko", label: "한글 이름", value: d.people.to.name_ko, ph: "염서연" },
+                       { key: "title", label: "직책", value: d.people.to.title, ph: "대리" }]}
+              onSave={(v) => savePerson(d.people!.to.email, v, d.people!.to.name)} />
+            <PersonLine label="소개" text={d.people.me.intro} p={d.people.me} canSave={canSend}
+              fields={[{ key: "team", label: "팀", value: d.people.me.team, ph: "TA" },
+                       { key: "name_ko", label: "한글 이름", value: d.people.me.name_ko, ph: "박훈일" }]}
+              onSave={(v) => savePerson(d.people!.me.email, v)} />
+          </>
+        )}
       </div>
       <Field label="제목"><Input value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
       <Field label="본문"><Textarea rows={11} value={body} onChange={(e) => setBody(e.target.value)} /></Field>

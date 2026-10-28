@@ -467,6 +467,9 @@ class Staff(Base):
     is_dqa: Mapped[bool] = mapped_column(Boolean, default=False)
     is_handler: Mapped[bool] = mapped_column(Boolean, default=False)
     team: Mapped[str] = mapped_column(String(80), default="")
+    # 회신 문구용(2026-10-28) — 호칭 '염서연 대리님', 소개 'TA팀 박훈일입니다'
+    name_ko: Mapped[str] = mapped_column(String(40), default="")
+    title: Mapped[str] = mapped_column(String(40), default="")
     memo: Mapped[str] = mapped_column(Text, default="")
     updated_by: Mapped[str] = mapped_column(String(80), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)

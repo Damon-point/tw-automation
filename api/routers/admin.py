@@ -663,6 +663,8 @@ class StaffIn(BaseModel):
     is_dqa: bool = False
     is_handler: bool = False
     memo: str = ""
+    name_ko: str = ""
+    title: str = ""
 
 
 @router.post("/staff")
@@ -672,7 +674,7 @@ def staff_save(body: StaffIn, request: Request):
 
     ok, msg = ST.save_staff(id=body.id, name=body.name, email=body.email, status=body.status or ST.ACTIVE,
                             is_dqa=body.is_dqa, is_handler=body.is_handler, team=body.team, memo=body.memo,
-                            by=u["username"])
+                            by=u["username"], name_ko=body.name_ko, title=body.title)
     if not ok:
         _bad(msg)
     return {"ok": True, "message": msg}

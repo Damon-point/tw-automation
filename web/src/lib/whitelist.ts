@@ -27,7 +27,15 @@ export type VerifyResult = {
   ok: boolean; total: number; matched: number; missing: number; mismatched: number; error: string;
   rows: VerifyRow[]; hidden: number;
 };
-export type Draft = { to: string; cc: string; subject: string; body: string };
+/** 회신 문구에 들어간 두 사람 — source: roster(사내 인원 명부) · learned(지난 메일) · fallback(영문 이름) · none */
+export type ReplyPerson = { email: string; name_ko: string; source: string; in_roster: boolean };
+export type Draft = {
+  to: string; cc: string; subject: string; body: string;
+  people?: {
+    to: ReplyPerson & { name: string; greeting: string; title: string };
+    me: ReplyPerson & { intro: string; team: string };
+  };
+};
 
 // ── AI 해석 ─────────────────────────────────────────────────────────────────
 export type OrgView = {

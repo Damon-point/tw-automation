@@ -465,13 +465,17 @@ def reply_draft(tid: str, body: DraftIn, request: Request):
     g = _find(tid)
     rep = g["rep"]
     addr, name = _sender_addr_name(rep.get("sender", ""))
-    if body.kind == "dqa":
-        if not name and addr:
-            name = display_name_for(addr)
-        from app.user_mailer import user_email
+    from app.user_mailer import user_email
 
+    me = user_email(user(request)["id"])
+    if not name and addr:
+        name = display_name_for(addr)
+    # 로그인한 사람(소개 줄) · 요청 메일 보낸 사람(호칭) — 사내 인원 명부 먼저, 없으면 과거 메일에서
+    people = WM.reply_people(addr, name, me)
+    if body.kind == "dqa":
         d = WM.build_dqa_reply_draft(to_name=name, subject_orig=rep.get("subject", ""),
-                                     intro=WM.learned_intro(user_email(user(request)["id"])))
+                                     intro=people["me"]["intro"],
+                                     greeting=people["to"]["greeting"] if people["to"]["source"] != "fallback" else "")
         cc = _reply_ctx(g, True).get("cc", "")
     else:
         lang = WM.detect_lang(f"{rep.get('subject', '')}\n{rep.get('body_text', '')}")
@@ -483,11 +487,33 @@ def reply_draft(tid: str, body: DraftIn, request: Request):
         d = WM.build_reply_draft(to_name=name, devices=[{"sn": s, "model": models.get(s, "")} for s in sns],
                                  lang=lang, kind=body.kind, new_date=body.new_date,
                                  subject_orig=rep.get("subject", ""),
-                                 greeting=WM.learned_greeting(addr, user_email(u["id"])) if lang == "ko" else "",
-                                 intro=WM.learned_intro(user_email(u["id"])))
+                                 greeting=(people["to"]["greeting"] if people["to"]["source"] != "fallback" else "")
+                                 if lang == "ko" else "",
+                                 intro=people["me"]["intro"])
         # 실제 회신은 원본 참조인(유럽팀 · pm_ta 등)을 그대로 두는 전체 회신이다(2026-10 회신 8통 모두)
         cc = _reply_ctx(g, True).get("cc", "")
-    return {"to": addr, "cc": cc if isinstance(cc, str) else ", ".join(cc or []), **d}
+    return {"to": addr, "cc": cc if isinstance(cc, str) else ", ".join(cc or []), "people": people, **d}
+
+
+class PersonIn(BaseModel):
+    email: str
+    name_ko: str
+    title: str = ""
+    team: str | None = None
+    name: str = ""
+
+
+@router.post("/staff-person")
+def staff_person(body: PersonIn, request: Request):
+    """회신 창에서 바로 명부에 — 한글 이름 · 직책(· 팀). 다음 회신부터 이 값으로 채운다."""
+    u = admin(request)
+    from app import staff as ST
+
+    ok, msg = ST.set_korean(body.email, name_ko=body.name_ko, title=body.title, team=body.team,
+                            name=body.name, by=u["username"])
+    if not ok:
+        _bad(msg)
+    return {"ok": True, "message": msg}
 
 
 class SendIn(BaseModel):

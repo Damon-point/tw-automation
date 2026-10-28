@@ -28,8 +28,59 @@ def _to_dict(s: Staff) -> dict:
         "id": s.id, "name": s.name or "", "email": s.email or "",
         "status": s.status or ACTIVE, "is_dqa": bool(s.is_dqa),
         "is_handler": bool(s.is_handler), "team": s.team or "",
+        "name_ko": s.name_ko or "", "title": s.title or "",
         "memo": s.memo or "", "updated_by": s.updated_by or "",
     }
+
+
+def person(email: str) -> dict | None:
+    """주소 → 명부 한 사람(dict). 없으면 None."""
+    addr = _norm(email)
+    if not addr:
+        return None
+    with get_session() as db:
+        s = db.query(Staff).filter(Staff.email == addr).first()
+        return _to_dict(s) if s else None
+
+
+def greeting_for(email: str) -> str:
+    """회신 호칭 — 명부의 한글 이름 + 직책: '염서연 대리님'. 한글 이름이 없으면 ''."""
+    p = person(email)
+    if not p or not p["name_ko"]:
+        return ""
+    return f"{p['name_ko']} {p['title']}님" if p["title"] else f"{p['name_ko']}님"
+
+
+def intro_for(email: str) -> str:
+    """회신 첫 줄 자기소개 — 명부의 팀 + 한글 이름: 'TA팀 박훈일입니다.' 한글 이름이 없으면 ''."""
+    p = person(email)
+    if not p or not p["name_ko"]:
+        return ""
+    team = p["team"].strip()
+    if team and not team.endswith("팀"):
+        team += "팀"
+    return f"{team + ' ' if team else ''}{p['name_ko']}입니다."
+
+
+def set_korean(email: str, *, name_ko: str, title: str = "", team: str | None = None,
+               name: str = "", by: str = "") -> tuple[bool, str]:
+    """회신 창에서 바로 — 한글 이름 · 직책(· 팀)만 고친다. 명부에 없으면 역할 없이 새로 넣는다."""
+    addr = _norm(email)
+    if not addr or "@" not in addr:
+        return False, "메일 주소가 없습니다."
+    with get_session() as db:
+        s = db.query(Staff).filter(Staff.email == addr).first()
+        if s is None:
+            s = Staff(email=addr, name=(name or "").strip(), status=ACTIVE)
+            db.add(s)
+        s.name_ko = (name_ko or "").strip()
+        s.title = (title or "").strip()
+        if team is not None:
+            s.team = team.strip()
+        s.updated_by = by or ""
+        db.commit()
+    _invalidate()
+    return True, "명부에 저장했습니다."
 
 
 def list_staff() -> list[dict]:
@@ -43,7 +94,7 @@ def list_staff() -> list[dict]:
 
 def save_staff(*, id: int | None, name: str, email: str, status: str = ACTIVE,
                is_dqa: bool = False, is_handler: bool = False, team: str = "",
-               memo: str = "", by: str = "") -> tuple[bool, str]:
+               memo: str = "", by: str = "", name_ko: str = "", title: str = "") -> tuple[bool, str]:
     """추가(id=None) 또는 수정. (성공여부, 메시지).
 
     메일 주소는 명부에서 유일해야 한다 — 같은 사람이 두 행이면 역할 판정이 갈린다.
@@ -67,6 +118,8 @@ def save_staff(*, id: int | None, name: str, email: str, status: str = ACTIVE,
         s.is_dqa = bool(is_dqa)
         s.is_handler = bool(is_handler)
         s.team = (team or "").strip()
+        s.name_ko = (name_ko or "").strip()
+        s.title = (title or "").strip()
         s.memo = (memo or "").strip()
         s.updated_by = by or ""
         db.commit()

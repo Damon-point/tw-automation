@@ -7,7 +7,7 @@ import { useApi } from "@/lib/api";
 import { send, type StaffRow } from "@/lib/admin";
 
 type Resp = { staff: StaffRow[]; statuses: string[]; active: string; left: string };
-const EMPTY: Omit<StaffRow, "id"> & { id: number | null } = { id: null, name: "", email: "", team: "", status: "", is_dqa: false, is_handler: false, memo: "" };
+const EMPTY: Omit<StaffRow, "id"> & { id: number | null } = { id: null, name: "", email: "", team: "", status: "", is_dqa: false, is_handler: false, memo: "", name_ko: "", title: "" };
 
 function Check({ on }: { on: boolean }) {
   return on ? <span className="font-bold text-ok">✓</span> : <span className="text-ink-3">—</span>;
@@ -35,7 +35,7 @@ export default function StaffPage() {
 
   const teams = useMemo(() => {
     const rows = (data?.staff ?? []).filter((r) =>
-      (!q || `${r.name} ${r.email} ${r.team}`.toLowerCase().includes(q.toLowerCase())) &&
+      (!q || `${r.name} ${r.name_ko} ${r.email} ${r.team}`.toLowerCase().includes(q.toLowerCase())) &&
       (!filter || (filter === "dqa" ? r.is_dqa : filter === "handler" ? r.is_handler : r.status === data?.left)));
     const m = new Map<string, StaffRow[]>();
     for (const r of rows) m.set(r.team || "", [...(m.get(r.team || "") ?? []), r]);
@@ -55,21 +55,21 @@ export default function StaffPage() {
   return (
     <>
       <Section title="사내 인원 명부"
-               desc="메일을 보내오는 사람의 명부입니다. 여기 체크가 곧 동작입니다 — DQA팀이 보낸 FOTA 테스트 요청은 DQA 전용 처리로, 처리담당이 보낸 메일은 회신으로 보고 신규 요청에서 뺍니다. 퇴사는 표시일 뿐 역할을 끄지 않습니다."
+               desc="메일을 보내오는 사람의 명부입니다. 여기 체크가 곧 동작입니다 — DQA팀이 보낸 FOTA 테스트 요청은 DQA 전용 처리로, 처리담당이 보낸 메일은 회신으로 보고 신규 요청에서 뺍니다. 한글 이름 · 직책은 WhiteList 회신의 호칭('염서연 대리님')과 보내는 사람 소개('TA팀 박훈일입니다')에 들어갑니다. 퇴사는 표시일 뿐 역할을 끄지 않습니다."
                right={<Button onClick={() => setEdit({ ...EMPTY, status: data.active })}>인원 추가</Button>}>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {chip("", "전체", all.length)}
           {chip("dqa", "DQA팀", all.filter((r) => r.is_dqa).length)}
           {chip("handler", "처리담당", all.filter((r) => r.is_handler).length)}
           {chip("left", "퇴사", all.filter((r) => r.status === data.left).length)}
-          <SearchBox value={q} onChange={setQ} placeholder="이름 · 메일 · 팀" className="ml-auto" />
+          <SearchBox value={q} onChange={setQ} placeholder="이름 · 한글 이름 · 메일 · 팀" className="ml-auto" />
         </div>
         {teams.length ? (
           <div className="overflow-x-auto rounded-xl border border-line">
-            <table className="w-full min-w-[680px] text-[13.5px]">
+            <table className="w-full min-w-[800px] text-[13.5px]">
               <thead>
                 <tr className="border-b border-line bg-surface-2 text-left text-[11.5px] font-semibold text-ink-3">
-                  <th className="px-4 py-2">이름</th><th className="px-3 py-2">메일 주소</th><th className="px-3 py-2 text-center">상태</th>
+                  <th className="px-4 py-2">이름</th><th className="px-3 py-2">한글 이름 · 직책</th><th className="px-3 py-2">메일 주소</th><th className="px-3 py-2 text-center">상태</th>
                   <th className="px-3 py-2 text-center">DQA</th><th className="px-3 py-2 text-center">처리담당</th><th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -77,11 +77,12 @@ export default function StaffPage() {
                 {teams.map(([team, ms]) => (
                   <Fragment key={`t-${team}`}>
                     <tr className="border-b border-line bg-surface-2/60">
-                      <td colSpan={6} className="px-4 py-1.5 text-[12.5px] font-bold">{team || "(팀 없음)"} <span className="font-normal text-ink-3">{ms.length}명</span></td>
+                      <td colSpan={7} className="px-4 py-1.5 text-[12.5px] font-bold">{team || "(팀 없음)"} <span className="font-normal text-ink-3">{ms.length}명</span></td>
                     </tr>
                     {ms.map((r) => (
                       <tr key={r.id} className={cx("border-b border-line last:border-b-0", r.status === data.left && "opacity-55")}>
                         <td className="px-4 py-2 font-semibold">{r.name || "-"}{r.memo && <div className="text-[11.5px] font-normal text-ink-3">{r.memo}</div>}</td>
+                        <td className="px-3 py-2">{r.name_ko ? <>{r.name_ko}{r.title && <span className="text-ink-2"> {r.title}</span>}</> : <span className="text-ink-3">—</span>}</td>
                         <td className="px-3 py-2 font-mono text-[12.5px]">{r.email}</td>
                         <td className={cx("px-3 py-2 text-center text-[12.5px]", r.status === data.left && "text-err")}>{r.status}</td>
                         <td className="px-3 py-2 text-center"><Check on={r.is_dqa} /></td>
@@ -115,6 +116,10 @@ export default function StaffPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="이름"><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
               <Field label="팀"><Input value={edit.team} onChange={(e) => setEdit({ ...edit, team: e.target.value })} /></Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="한글 이름"><Input value={edit.name_ko} placeholder="염서연" onChange={(e) => setEdit({ ...edit, name_ko: e.target.value })} /></Field>
+              <Field label="직책"><Input value={edit.title} placeholder="대리" onChange={(e) => setEdit({ ...edit, title: e.target.value })} /></Field>
             </div>
             <Field label="메일 주소"><Input value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
             <Field label="상태"><Select value={edit.status} onChange={(v) => setEdit({ ...edit, status: v })} options={data.statuses.map((s) => ({ value: s, label: s }))} /></Field>

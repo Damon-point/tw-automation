@@ -229,7 +229,50 @@ def build_reply_draft(
     return {"subject": subject, "body": body}
 
 
-def build_dqa_reply_draft(*, to_name: str, subject_orig: str, intro: str = "") -> dict:
+def split_greeting(g: str) -> tuple[str, str]:
+    """'염서연 대리님' → ('염서연', '대리'), '염서연님' → ('염서연', ''). 모르면 ('', '')."""
+    m = re.match(r"^([가-힣]{2,4})\s*([가-힣]{1,4})?\s*님$", (g or "").strip())
+    return (m.group(1), m.group(2) or "") if m else ("", "")
+
+
+def split_intro(s: str) -> tuple[str, str]:
+    """'TA팀 박훈일입니다.' → ('TA', '박훈일'). 모르면 ('', '')."""
+    m = re.match(r"^(?:(\S+?)팀\s+)?([가-힣]{2,4})입니다\.?$", (s or "").strip())
+    return (m.group(1) or "", m.group(2)) if m else ("", "")
+
+
+def reply_people(to_addr: str, to_name: str, me_addr: str) -> dict:
+    """회신 문구에 들어갈 두 사람 — 받는 사람의 호칭, 보내는 사람(로그인)의 소개.
+
+    명부(한글 이름 · 직책 · 팀)가 먼저다. 명부에 없으면 과거 메일에서 배운 것 → 영문 이름님 순.
+    source: roster(명부) · learned(과거 메일) · fallback(영문 이름) · none — 회신 창이 명부 저장을 권할지 가른다.
+    """
+    from app import staff as ST
+
+    to_p = ST.person(to_addr) or {}
+    g, src = ST.greeting_for(to_addr), "roster"
+    if not g:
+        g, src = learned_greeting(to_addr, me_addr), "learned"
+    if not g:
+        g, src = ((to_name + "님") if to_name else ""), ("fallback" if to_name else "none")
+    nk, tt = (to_p.get("name_ko"), to_p.get("title")) if src == "roster" else split_greeting(g)
+
+    me_p = ST.person(me_addr) or {}
+    i, isrc = ST.intro_for(me_addr), "roster"
+    if not i:
+        i, isrc = learned_intro(me_addr), "learned"
+    if not i:
+        isrc = "none"
+    team, mk = (me_p.get("team", ""), me_p.get("name_ko", "")) if isrc == "roster" else split_intro(i)
+    return {
+        "to": {"email": to_addr, "name": to_name, "greeting": g, "source": src,
+               "name_ko": nk or "", "title": tt or "", "in_roster": bool(to_p)},
+        "me": {"email": me_addr, "intro": i, "source": isrc, "team": team or me_p.get("team", ""),
+               "name_ko": mk or "", "in_roster": bool(me_p)},
+    }
+
+
+def build_dqa_reply_draft(*, to_name: str, subject_orig: str, intro: str = "", greeting: str = "") -> dict:
     """DQA FOTA Test 등록 완료 회신 **초안**. {subject, body}.
 
     사내 회신이라 고객 회신(build_reply_draft)과 형식이 다르다. 실제로 보낸 메일
@@ -246,7 +289,7 @@ def build_dqa_reply_draft(*, to_name: str, subject_orig: str, intro: str = "") -
         subj = subj.split(":", 1)[1].strip()
     subject, body = MT.render(
         "wl_reply_dqa", 원본제목=subj, 소개=(" " + intro) if intro else "",
-        호칭줄=(f"{to_name}님.\n\n" if to_name else ""))
+        호칭줄=(f"{greeting},\n\n" if greeting else (f"{to_name}님.\n\n" if to_name else "")))
     return {"subject": subject, "body": body}
 
 
