@@ -1,11 +1,14 @@
-﻿# tw-automation-v2(3080) 를 콘솔 창 없이 띄운다 — API(8180, 이 PC 안에서만) + 화면(3080, 사내망).
+﻿# tw-automation-v2 를 콘솔 창 없이 띄운다 — API(8180, 이 PC 안에서만) + 화면(8080, 사내망).
+# 2026-10-28 부터 운영 서버 — 예전 8080(tw-automation)을 내리고 이 화면이 8080 을 쓴다.
+# tw-automation\watchdog.ps1 이 8080 · 8180 이 닫혀 있으면 이 스크립트를 부른다(재부팅 뒤 자동 기동).
 # 개발용 로그인(TWN_DEV_LOGIN_AS)은 여기서 켜지 않는다.
+param([int]$WebPort = 8080)
 $root = Split-Path -Parent $PSScriptRoot
 $py = Join-Path $root "backend\.venv\Scripts\python.exe"   # 3080 전용 venv
 $logs = Join-Path $root "logs"
 New-Item -ItemType Directory -Force $logs | Out-Null
 
-foreach ($port in 8180, 3080) {
+foreach ($port in 8180, $WebPort) {
     $p = (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
     if ($p) { Stop-Process -Id $p -Force }
 }
@@ -38,7 +41,7 @@ $web = Join-Path $root "web"
 if (-not (Test-Path (Join-Path $web ".next\BUILD_ID"))) {
     Push-Location $web; npx next build; Pop-Location
 }
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c npx next start -p 3080 -H 0.0.0.0" `
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c npx next start -p $WebPort -H 0.0.0.0" `
     -WorkingDirectory $web -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logs "web.out.log") -RedirectStandardError (Join-Path $logs "web.err.log")
-"started: http://192.168.121.35:3080"
+"started: http://192.168.121.35:$WebPort"

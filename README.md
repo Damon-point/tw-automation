@@ -63,7 +63,8 @@ cd web; npm install; npx next build
 powershell -ExecutionPolicy Bypass -File scripts\start.ps1
 ```
 
-- 화면: `http://192.168.121.35:3080` (사내망). 방화벽에 3080 허용 규칙이 있어야 다른 PC 에서 열린다.
+- 화면: `http://192.168.121.35:8080` (사내망) — 2026-10-28 부터 운영. 예전 8080(tw-automation)은 내렸다.
+  `start.ps1 -WebPort 3080` 처럼 다른 포트로도 띄울 수 있다. 재부팅 뒤에는 `tw-automation\watchdog.ps1` 이 띄운다.
 - API 는 `127.0.0.1:8180` 에만 열린다. 설정은 `.env`(`TWN_SECRET` 세션 서명 열쇠, `TWN_LEGACY_URL`).
 - 개발용 로그인 `TWN_DEV_LOGIN_AS` 는 화면 확인용이다. 이 PC 에서 API 로 직접 보낸 요청만 받고,
   화면 서버를 거친 요청은 거부한다. 운영 실행(`start.ps1`)에서는 켜지 않는다.

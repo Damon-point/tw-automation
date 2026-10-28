@@ -44,7 +44,8 @@ import osu_actions as A  # noqa: E402
 import osu_reviews as R  # noqa: E402
 import runtime  # noqa: E402
 
-LEGACY_URL = os.getenv("TWN_LEGACY_URL", "http://192.168.121.35:8080").rstrip("/")
+# 예전 화면 링크 — 2026-10-28 예전 8080 을 내리고 이 서버가 8080 이 되어 기본은 비운다(비면 화면이 링크를 숨긴다)
+LEGACY_URL = os.getenv("TWN_LEGACY_URL", "").rstrip("/")
 SECRET = os.getenv("TWN_SECRET", "")
 if not SECRET:
     raise SystemExit("TWN_SECRET 가 .env 에 없습니다 (tw-automation-v2/.env)")
