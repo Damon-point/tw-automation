@@ -370,6 +370,59 @@ def _deploy_subject_rows() -> list[dict]:
     return [{"id": r[0], "subject": r[1] or "", "received_at": r[2] or ""} for r in rows]
 
 
+def _release_subject_rows() -> list[dict]:
+    """제목에 'Release' 나 '배포' 가 든 메일의 제목 목록(최신 먼저) — FW 릴리스 공지 판별용."""
+    from sqlalchemy import or_
+
+    from app.database import get_session
+    from app.models import CachedMail
+
+    with get_session() as db:
+        rows = (db.query(CachedMail.id, CachedMail.subject, CachedMail.received_at)
+                .filter(or_(CachedMail.subject.ilike("%release%"), CachedMail.subject.like("%배포%")))
+                .filter(_not_ours())
+                .order_by(CachedMail.id.desc()).all())
+    return [{"id": r[0], "subject": r[1] or "", "received_at": r[2] or ""} for r in rows]
+
+
+_FW_KW_RE = re.compile(r"\bRelease\b|배포", re.I)
+
+
+def _fw_candidates(product: str) -> list[dict]:
+    """FW 제품의 릴리스 공지 후보(_deploy_candidates 와 같은 꼴, 2026-11-05).
+
+    FW 공지는 Android 태그도 '배포' 도 없이 온다 — 'Release PM5 FW 92.14 (Oct 8 2026)',
+    '[RF88] 98.05 RC Release'. 제품명(경계까지) + Release/배포 가 든 제목에서 버전을 뽑는다.
+    RC · Beta 는 is_rc · is_beta 로 표시만 하고, 회차로 볼지는 _deploy_rounds 가 가른다.
+    """
+    out = []
+    for r in _release_subject_rows():
+        s = r.get("subject") or ""
+        if not re.search(rf"(?<![A-Za-z0-9]){re.escape(product)}(?![A-Za-z0-9])", s, re.I):
+            continue
+        km = _FW_KW_RE.search(s)
+        if not km:
+            continue
+        # 버전은 제품명 뒤에서 찾는다('Release PM5 FW 92.14' — 앞의 'PM5' 숫자를 버전으로 읽지 않게)
+        pm = re.search(rf"(?<![A-Za-z0-9]){re.escape(product)}(?![A-Za-z0-9])", s, re.I)
+        mv = _DEPLOY_VER_RE.search(s[pm.end():]) if pm else None
+        if not mv:
+            continue
+        ver = re.sub(r"\s+", " ", mv.group(1).strip())
+        low = s.lower().strip()
+        dm = _DEPLOY_DATE_RE.search(s)
+        out.append({
+            "mail_id": r["id"], "subject": s, "version": ver, "gms_type": "FW",
+            "date": dm.group(1) if dm else "",
+            "is_beta": bool(re.search(r"B\d", ver)),
+            "is_rc": bool(re.search(r"\bRC\d*\b", s, re.I)),
+            # FW 공지는 'Stress test 보고 // RE: Release …' 처럼 회신이 줄줄이 붙는다 — 어디든 RE:·FW:·// 면 원 공지가 아니다
+            "not_re": 0 if (low.startswith(("re:", "fw:", "fwd:")) or re.search(r"//|\bRE:|\bFW:", s)) else 1,
+            "clean": 1, "pure": 0 if re.search(r"//|\bRE:|\bFW:", s) else 1,
+        })
+    return out
+
+
 def _deploy_candidates(user_id: int, product: str, android: str,
                        want_version: str = "") -> list[dict]:
     """제품(+Android)의 배포 공지 메일 후보를 **모두** 반환(정렬: 버전일치→clean→non-RE→최신).

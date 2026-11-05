@@ -323,6 +323,9 @@ class OsProduct(Base):
     initial_os_version: Mapped[str] = mapped_column(String(20), default="")   # 예: 95.01
     # 제품군 — 목록을 접었다 펼치기 위한 **보기 구분**이다(파이프라인 동작에는 쓰지 않는다).
     category: Mapped[str] = mapped_column(String(30), default="")   # EDA · Tablet …
+    # 업데이트 종류(2026-11-05) — OS(Android 회차: [FIH] 트리거 · 배포 공지) · FW(펌웨어 릴리스 공지).
+    # 비어 있으면 제품군으로 정한다: Others → FW, 그 밖 → OS (os_products.kind_of).
+    update_kind: Mapped[str] = mapped_column(String(10), default="")
 
     # 사내 경로
     dev_rn_path: Mapped[str] = mapped_column(Text, default="")            # 개발 Release Note 파일

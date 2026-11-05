@@ -321,7 +321,7 @@ def send_new_round_notice(only_new: bool = True) -> dict:
     for i, (r, u) in enumerate(found, 1):
         sku = " ".join(x for x in (r["product"], f"A{r['android']}" if r["android"] else "",
                                    r.get("os_type") or "") if x)
-        src = "배포 공지만 있음(트리거 메일 없음)" if u.get("source") == "deploy" else (
+        src = "FW 릴리스 공지" if u.get("source") == "fw" else "배포 공지만 있음(트리거 메일 없음)" if u.get("source") == "deploy" else (
             "Google 승인 완료" if u.get("approved") else "승인 대기")
         lines.append(f"{i}. {sku} — {u['version'] or '(버전 미정)'}  [{src}]")
         if u.get("basis"):

@@ -343,6 +343,12 @@ def _deploy_for(product: str, android: str) -> list[dict]:
                    lambda: _deploy_candidates(0, product, android))
 
 
+def _fw_for(product: str) -> list[dict]:
+    from app.pipeline.rn_research import _fw_candidates
+
+    return _cached(("fw", product.upper()), lambda: _fw_candidates(product))
+
+
 def os_version_like(ver: str, initial: str) -> bool:
     """그 제품의 **OS 버전 모양**인가 — 배포 공지의 버전을 회차로 볼지 가른다.
 
@@ -397,11 +403,14 @@ def _deploy_rounds(product: dict) -> list[dict]:
         sfx = (pv.suffix if pv else "").upper()
         return (not sfx) or sfx.startswith("C")
 
+    from app import os_products as P
+
     prod, andr = product.get("product", ""), str(product.get("android", ""))
     if not prod:
         return []
+    fw = P.kind_of(product) == "FW"
     try:
-        cands = _deploy_for(prod, andr)
+        cands = _fw_for(prod) if fw else _deploy_for(prod, andr)
     except Exception:  # noqa: BLE001  (감지 실패가 목록 전체를 막으면 안 된다)
         return []
 
@@ -422,7 +431,8 @@ def _deploy_rounds(product: dict) -> list[dict]:
         #   이미지를 배포합니다" 인 Beta(이슈 #33679 대응) 인데, base 가 84.10 이라
         #   'PM84 A13 84.10' 이 신규 회차로 올라왔다. 정식 배포가 아니므로 감지하지 않는다.
         # 나중에 정식 공지가 오면 그때 이 묶음에 들어와 회차로 잡힌다.
-        if not any(_is_release(c.get("version", "")) for c in group):
+        # FW 는 'RC Release' 처럼 RC 가 버전 밖에 붙어 온다 — 제목의 RC 도 비배포로 본다.
+        if not any(_is_release(c.get("version", "")) and not (fw and c.get("is_rc")) for c in group):
             continue
         official, _note = _official_version(base, group)
         # 원 공지(회신 아님) 중 가장 최근 것을 그 회차의 대표로 삼는다.
@@ -436,9 +446,9 @@ def _deploy_rounds(product: dict) -> list[dict]:
             "build": "", "incremental": "",
             "submission": None, "approval": None,
             "approved": False,              # 배포 공지만으로는 Google 승인 여부를 모른다
-            "source": "deploy",             # 화면이 [FIH] 감지분과 문구를 다르게 쓴다
+            "source": "fw" if fw else "deploy",   # 화면이 [FIH] 감지분과 문구를 다르게 쓴다
             "version": official,
-            "basis": (f"배포 공지 #{rep['mail_id']} — {rep['version']} "
+            "basis": (f"{'FW 릴리스' if fw else '배포'} 공지 #{rep['mail_id']} — {rep['version']} "
                       f"({rep.get('date') or '날짜?'})"),
             "mail_id": rep["mail_id"],
             "mails": [{
@@ -484,12 +494,26 @@ def detected_updates(product: dict) -> list[dict]:
     from app import os_products as P
     from app.pipeline import fih_mail as F
 
-    if P.is_others(product.get("category")):
-        return []
-    # 지금은 **등록된 우리 GMS 제품만** 다룬다(사용자 확정 2026-09-07).
-    # OEM/ODM 공급분(HT2·Z7_JP 등)은 제품 관리에 없으므로 자연히 빠진다.
-    if str(product.get("os_type") or "").strip().upper() != "GMS":
-        return []
+    # 제품 목록의 **모든 제품**을 감지한다(2026-11-05). 종류마다 근거가 다르다:
+    #   FW            — 펌웨어 릴리스 공지만([FIH] · GMS 배포 공지는 Android 회차 것이라 쓰지 않는다)
+    #   OS · GMS      — 지금까지와 같다: [FIH] 트리거 + 배포 공지 보완
+    #   OS · 그 밖    — [FIH] 는 GMS 회차에만 오므로 배포 공지만
+    kind = P.kind_of(product)
+    if kind == "FW" or str(product.get("os_type") or "").strip().upper() != "GMS":
+        with get_session() as db:
+            _have = {j.version for j in db.query(OsUpdateJob).filter_by(product_id=product["id"]).all()}
+        from app.pipeline.rn_research import _base_ver as _bvx
+
+        have_base = {_bvx(v) for v in _have}
+        out_x, seen_x = [], set()
+        for d in _deploy_rounds(product):
+            key = _bvx(d["version"])
+            if not key or key in seen_x:
+                continue
+            seen_x.add(key)
+            d["job_exists"] = key in have_base
+            out_x.append(d)
+        return out_x
 
     _reqmap = _request_versions()
     taken = _linked_ids("submission") | _linked_ids("approval")

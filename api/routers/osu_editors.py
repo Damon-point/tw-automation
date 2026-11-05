@@ -87,7 +87,9 @@ def round_plan(product_id: int, version: str, request: Request):
     p, d = _round_of(product_id, version)
     upd = d.get("update")
     if upd is not None:
-        if upd.get("source") == "deploy":
+        if upd.get("source") == "fw":
+            why = "FW 릴리스 공지로 감지된 새 회차입니다."
+        elif upd.get("source") == "deploy":
             why = "배포 공지로 감지된 새 회차입니다(트리거 메일 없음)."
         elif upd.get("approved"):
             why = "Google 승인까지 끝난 새 회차입니다."

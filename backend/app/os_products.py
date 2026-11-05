@@ -68,7 +68,21 @@ def group_by_category(rows: list[dict]) -> list[tuple[str, list[dict]]]:
 INFO_FIELDS: list[tuple[str, str, str]] = [
     ("initial_os_version", "최초 OS 버전", "95.01"),
     ("category", "제품군", "EDA"),
+    ("update_kind", "업데이트 종류", "OS"),
 ]
+
+# 업데이트 종류 — 회차를 어디서 알아내는지가 다르다(2026-11-05).
+#   OS — Android 회차: [FIH] 트리거 메일 · '… 배포' 공지(지금까지와 같다)
+#   FW — 펌웨어: 'Release PM5 FW 92.14 (…)' · '[RF88] 98.05 Release' 같은 릴리스 공지
+UPDATE_KINDS: tuple[str, ...] = ("OS", "FW")
+
+
+def kind_of(row: dict) -> str:
+    """그 제품의 업데이트 종류. 정하지 않았으면 Others → FW, 그 밖 → OS."""
+    k = str((row or {}).get("update_kind") or "").strip().upper()
+    if k in UPDATE_KINDS:
+        return k
+    return "FW" if is_others((row or {}).get("category")) else "OS"
 
 # 경로 항목 — (그룹 이름, [(키, 라벨, placeholder)]).
 # placeholder 는 지금 파이프라인이 실제로 쓰는 경로 형태를 예로 넣는다.
@@ -123,6 +137,8 @@ def _norm(fields: dict) -> dict:
             out[k] = ""
     # '95.01 ' · 'v95.01' 처럼 들어와도 '95.01' 로 맞춘다(비교·정렬에 쓰이므로).
     out["initial_os_version"] = out["initial_os_version"].lstrip("vV").replace(" ", "")
+    k = out.get("update_kind", "").upper()
+    out["update_kind"] = k if k in UPDATE_KINDS else ""
     return out
 
 

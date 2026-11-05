@@ -28,6 +28,8 @@ class Base(DeclarativeBase):
 _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # 첫 로그인 비밀번호 변경 — 기존 계정은 0(변경 불필요)으로 남는다.
     ("users", "must_change_password", "INTEGER DEFAULT 0"),
+    # 제품의 업데이트 종류 OS · FW(2026-11-05)
+    ("os_products", "update_kind", "VARCHAR(10) DEFAULT ''"),
     # 사내 인원 명부 — 회신 호칭 · 소개에 쓰는 한글 이름 · 직책(2026-10-28)
     ("staff", "name_ko", "VARCHAR(40) DEFAULT ''"),
     ("staff", "title", "VARCHAR(40) DEFAULT ''"),

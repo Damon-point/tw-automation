@@ -86,7 +86,8 @@ def osupdate_notice_html(found: list[tuple[dict, dict]], url: str) -> str:
     for i, (r, u) in enumerate(found, 1):
         sku = " ".join(x for x in (r.get("product", ""), f"A{r['android']}" if r.get("android") else "",
                                    r.get("os_type") or "") if x)
-        src = ("배포 공지만 있음" if u.get("source") == "deploy" else
+        src = ("FW 릴리스 공지" if u.get("source") == "fw" else
+               "배포 공지만 있음" if u.get("source") == "deploy" else
                "Google 승인 완료" if u.get("approved") else "승인 대기")
         color = "#13804b" if src == "Google 승인 완료" else ("#b26a00" if src == "승인 대기" else INK2)
         rows.append([str(i),

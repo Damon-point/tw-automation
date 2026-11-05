@@ -127,7 +127,15 @@ function Form({ meta, row, onClose, onSaved }: { meta: ProductMeta; row: Product
             </>
           )}
         </div>
-        <Field label="최초 OS 버전" className="max-w-[240px]"><Input value={f.initial_os_version} onChange={set("initial_os_version")} placeholder="95.01" mono /></Field>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Field label="업데이트 종류" hint="OS — [FIH] 트리거 · 배포 공지 / FW — FW 릴리스 공지">
+            <Select value={f.update_kind || (others ? "FW" : "OS")} onChange={(v) => setF((x) => ({ ...x, update_kind: v }))}
+                    options={[{ value: "OS", label: "OS" }, { value: "FW", label: "FW" }]} />
+          </Field>
+          <Field label={(f.update_kind || (others ? "FW" : "OS")) === "FW" ? "최초 FW 버전" : "최초 OS 버전"}>
+            <Input value={f.initial_os_version} onChange={set("initial_os_version")} placeholder={(f.update_kind || (others ? "FW" : "OS")) === "FW" ? "92.00" : "95.01"} mono />
+          </Field>
+        </div>
         <div className="text-[12px] text-ink-3">구분 키: {others ? "제품명" : "제품명 · Android 버전 · Type"}</div>
         {meta.path_groups.map((g) => (
           <div key={g.group}>
@@ -205,6 +213,9 @@ export default function ProductsPage() {
                                     <span className="font-bold">{p.product}</span>
                                     {p.android && <Tag>A{p.android}</Tag>}
                                     {p.os_type && <span className={cx("rounded-md px-1.5 py-0.5 text-[11px] font-semibold", TYPE_TONE[p.os_type] ?? "bg-muted-soft text-ink-2")}>{p.os_type}</span>}
+                                    {(String(p.update_kind || "") || (p.category === "Others" ? "FW" : "OS")) === "FW" && (
+                                      <span className="rounded-md bg-[#fff1e0] px-1.5 py-0.5 text-[11px] font-semibold text-[#9a5b00] dark:bg-[#3a2a12] dark:text-[#f0b35a]">FW</span>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-2 py-2.5 font-mono text-[12.5px]">{p.initial_os_version || <span className="text-ink-3">—</span>}</td>
