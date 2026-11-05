@@ -292,6 +292,7 @@ def _round_card(r: dict) -> dict:
 def rounds(request: Request, q: str = ""):
     _user(request)
     open_ = [_round_card(r) for r in J.open_rounds(q)]
+    detected = [_round_card(r) for r in J.detected_rounds(q)]     # FW — 감지만(작업으로 올리지 않음)
     recent = []
     for j in J.list_jobs()[:60]:
         done, total = J.job_progress(j["id"])
@@ -303,7 +304,7 @@ def rounds(request: Request, q: str = ""):
     if q:
         ql = q.lower()
         recent = [r for r in recent if ql in f"{r['product']} {r['version']} A{r['android']}".lower()]
-    return {"open": open_, "finished": recent[:40]}
+    return {"open": open_, "finished": recent[:40], "detected": detected}
 
 
 # ── 작업 ───────────────────────────────────────────────────────────────────────

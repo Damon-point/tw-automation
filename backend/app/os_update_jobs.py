@@ -755,9 +755,12 @@ IDLE = "idle"            # 개발 RN 만 있고 메일도 작업도 없음
 PUBLISHED = "published"  # 이미 출시됐지만 아직 완료로 닫지 않음(최근 출시분)
 RUNNING_ = "running"     # 작업 진행 중
 FINISHED = "done"        # 모든 단계 완료
+# FW 회차 — 릴리스 공지로 감지만 하고 작업으로는 올리지 않는다(2026-11-05 사용자: "일단 회차 감지만 되도록 하고
+# 현재 작업으로는 올라오지 않도록 해주세요. 준비가 안됐습니다"). 신규 작업 · 알림 · 시작에서 빠진다.
+DETECTED = "detected"
 
 VERSION_LABELS = {NEW: "신규", IDLE: "미진행", PUBLISHED: "출시됨",
-                  RUNNING_: "진행 중", FINISHED: "완료"}
+                  RUNNING_: "진행 중", FINISHED: "완료", DETECTED: "감지(FW)"}
 VERSION_COLORS = {NEW: "red-6", IDLE: "grey-6", PUBLISHED: "blue-grey-6",
                   RUNNING_: "orange-8", FINISHED: "green-8"}
 
@@ -837,6 +840,8 @@ def version_rows(product: dict) -> list[dict]:
                 r["state"] = FINISHED if m_done == m_total else RUNNING_
             elif r["published_at"] or r["version"] in _pub_std:
                 r["state"] = PUBLISHED
+            elif r["update"] is not None and r["update"].get("source") == "fw":
+                r["state"] = DETECTED     # FW — 감지만, 작업으로 올리지 않는다
             elif r["update"] is not None:
                 r["state"] = NEW          # 트리거 메일이 왔는데 아직 시작 안 함
             else:
@@ -873,6 +878,20 @@ def open_rounds(q: str = "") -> list[dict]:
                 out.append({**d, "product": p})
     out.sort(key=lambda d: (d["state"] != NEW, _round_seen_at(d) * -1,
                             d["product"]["product"]))
+    return out
+
+
+@_batched
+def detected_rounds(q: str = "") -> list[dict]:
+    """감지만 한 FW 회차(작업으로 올리지 않는 것) — open_rounds 와 같은 꼴."""
+    from app import os_products as P
+
+    out: list[dict] = []
+    for p in P.list_products(q):
+        for d in version_rows(p):
+            if d["state"] == DETECTED:
+                out.append({**d, "product": p})
+    out.sort(key=lambda d: (_ver_key(d["version"]), d["product"]["product"]), reverse=True)
     return out
 
 

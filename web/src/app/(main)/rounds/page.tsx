@@ -9,7 +9,7 @@ import { Btn, Confirm, Field, Modal, ToastHost, inputCls, useToast } from "@/com
 import { ago, skuText, useApi, type Product, type RoundCard } from "@/lib/api";
 import { del, errText, post, type RoundPlan } from "@/lib/osu";
 
-type Rounds = { open: RoundCard[]; finished: RoundCard[] };
+type Rounds = { open: RoundCard[]; finished: RoundCard[]; detected?: RoundCard[] };
 type Ask = { kind: "close" | "reopen" | "delete"; r: RoundCard } | null;
 
 export default function RoundsPage() {
@@ -18,7 +18,7 @@ export default function RoundsPage() {
 
 function Rounds() {
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState<"open" | "finished">("open");
+  const [tab, setTab] = useState<"open" | "finished" | "detected">("open");
   const [debounced, setDebounced] = useState("");
   const [openKey, setOpenKey] = useState("");
   const [ask, setAsk] = useState<Ask>(null);
@@ -33,7 +33,7 @@ function Rounds() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const { data, loading, reload } = useApi<Rounds>(`/api/rounds?q=${encodeURIComponent(debounced)}`, 30000);
-  const rows = tab === "open" ? data?.open ?? [] : data?.finished ?? [];
+  const rows = tab === "open" ? data?.open ?? [] : tab === "detected" ? data?.detected ?? [] : data?.finished ?? [];
   const newCount = data?.open.filter((r) => r.state === "new").length ?? 0;
   const keyOf = (r: RoundCard) => `${r.product_id ?? r.product}-${r.android}-${r.version}-${r.job_id ?? ""}`;
 
@@ -46,10 +46,10 @@ function Rounds() {
       />
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex rounded-lg border border-line bg-surface p-0.5">
-          {(["open", "finished"] as const).map((t) => (
+          {(["open", "finished", "detected"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)}
                     className={cx("rounded-md px-3.5 py-1.5 text-[13px] font-semibold", tab === t ? "bg-brand-soft text-brand-ink" : "text-ink-2 hover:text-ink")}>
-              {t === "open" ? `진행 중 ${data?.open.length ?? ""}` : `최근 완료 ${data?.finished.length ?? ""}`}
+              {t === "open" ? `진행 중 ${data?.open.length ?? ""}` : t === "detected" ? `FW 감지 ${data?.detected?.length ?? ""}` : `최근 완료 ${data?.finished.length ?? ""}`}
               {t === "open" && newCount > 0 && <span className="ml-1.5 rounded-full bg-err px-1.5 text-[11px] text-white">신규 {newCount}</span>}
             </button>
           ))}
@@ -64,8 +64,9 @@ function Rounds() {
         {loading ? <Skeleton rows={5} /> : rows.length ? rows.map((r) => {
           const k = keyOf(r);
           return <RoundRow key={k} r={r} open={openKey === k} onToggle={() => setOpenKey(openKey === k ? "" : k)} onAsk={(kind) => setAsk({ kind, r })} onStarted={reload} />;
-        }) : <Empty>{q ? `'${q}' 에 맞는 회차가 없습니다` : tab === "open" ? "진행 중인 회차가 없습니다" : "최근 완료된 회차가 없습니다"}</Empty>}
+        }) : <Empty>{q ? `'${q}' 에 맞는 회차가 없습니다` : tab === "open" ? "진행 중인 회차가 없습니다" : tab === "detected" ? "감지된 FW 회차가 없습니다" : "최근 완료된 회차가 없습니다"}</Empty>}
       </Card>
+      {tab === "detected" && <p className="mt-3 text-[12px] text-ink-3">FW 릴리스 공지로 감지한 회차. 작업으로는 시작하지 않습니다.</p>}
       {tab === "finished" && <p className="mt-3 text-[12px] text-ink-3">최근 작업 60건 중 모든 단계가 끝난 것. {data?.finished[0]?.created_at && `가장 최근 ${ago(data.finished[0].created_at!)}`}</p>}
       <AskDialog ask={ask} onClose={() => setAsk(null)} onDone={() => { setAsk(null); setOpenKey(""); reload(); }} />
       <AddVersion open={adding} onClose={() => setAdding(false)} />
@@ -109,7 +110,14 @@ function RoundRow({ r, open, onToggle, onAsk, onStarted }: { r: RoundCard; open:
           <Btn kind="ghost" className="text-err" onClick={() => onAsk("delete")}>삭제</Btn>
         </div>
       )}
-      {!r.job_id && open && r.product_id && <StartPanel r={r} onAsk={onAsk} onStarted={onStarted} />}
+      {!r.job_id && open && r.state === "detected" && (
+        <div className="space-y-1 px-5 pb-4 text-[12.5px]">
+          {(r.mails ?? []).map((m) => (
+            <div key={m.mail_id} className="flex gap-3"><span className="w-24 shrink-0 text-ink-3">{m.date}</span><span className="truncate">{m.subject}</span></div>
+          ))}
+        </div>
+      )}
+      {!r.job_id && open && r.product_id && r.state !== "detected" && <StartPanel r={r} onAsk={onAsk} onStarted={onStarted} />}
     </div>
   );
 }

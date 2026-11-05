@@ -121,6 +121,8 @@ def round_start(body: RoundIn, request: Request):
     p, d = _round_of(body.product_id, body.version)
     if d.get("job"):
         raise HTTPException(409, "이미 시작한 회차입니다")
+    if d.get("state") == J.DETECTED:
+        raise HTTPException(409, "FW 회차는 감지만 합니다 — 작업으로 시작하지 않습니다")
     version = (body.version_input or "").strip() if _unknown(d["version"]) else d["version"]
     if not version or _unknown(version):
         raise HTTPException(409, "OS 버전을 입력하세요")

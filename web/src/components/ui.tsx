@@ -31,6 +31,7 @@ const STATUS: Record<string, { label: string; cls: string; dot: string }> = {
   review: { label: "검수 대기", cls: "bg-warn-soft text-warn", dot: "bg-warn" },
   done: { label: "완료", cls: "bg-ok-soft text-ok", dot: "bg-ok" },
   new: { label: "신규", cls: "bg-err-soft text-err", dot: "bg-err" },
+  detected: { label: "감지(FW)", cls: "bg-muted-soft text-ink-2", dot: "bg-ink-3" },
   finished: { label: "완료", cls: "bg-ok-soft text-ok", dot: "bg-ok" },
 };
 
