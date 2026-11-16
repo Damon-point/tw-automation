@@ -305,6 +305,44 @@ def _prompt_for(batch: list[dict]) -> str:
     return "\n".join(parts) + "\n\n위 메일들을 판정해 JSON 으로 답하세요."
 
 
+# ── 규칙 판정 — Claude 보다 먼저, 정해진 업무는 규칙으로 정한다(2026-11-16 사용자 확정) ──
+# Guard1(Michael C. Popovic)의 'repair deactivation' 요청은 PM85 8→9(White85OtoP_1) 등록이다.
+# Claude 는 '수리 비활성화라 FOTA 등록과 무관' 으로 17번 모두 '요청 아님' 판정했다.
+_GUARD1_SENDER_RE = re.compile(r"@guard1\.", re.I)
+_DEACTIVATION_RE = re.compile(r"deactivat", re.I)
+# 서원상 부장님이 '등록 부탁' · 'FYI' 처럼 짧게 전달하는 메일 — 메일 안(인용 · 첨부 포함)에 S/N 이
+# 있으면 WhiteList 작업이다. Claude 는 '최신 메일만 보고' 판단해 짧은 전달문을 놓친다.
+_FORWARDERS = {"samuel.seo@pointmobile.com"}
+# 본인이 쓴 본문에서만 본다(제목 · 인용은 보지 않는다) — '확인' 이나 제목의 '등록' 까지 보면
+# '납품처 확인' · '목적을 기재해 주셔야' 같은 되묻는 메일이 섞였다(실측 #5849 · #6038).
+_FORWARD_ASK_RE = re.compile(
+    r"등록\s*(?:좀\s*)?(?:부탁|해\s*(?:줘|주|달)|해줄래|요청)|등록\s*(?:되었|됐|여부)|부탁|\bfyi\b", re.I)
+_FORWARD_MAX_CHARS = 600     # 인용을 걷은 본문(서명 포함)이 이보다 길면 '짧은 전달' 이 아니다
+
+
+def rule_verdict(g: dict) -> dict | None:
+    """규칙으로 정해지는 스레드면 verdict, 아니면 None."""
+    from app.whitelist.mail_filter import _addresses
+
+    r = g["rep"]
+    sender, subject = r.get("sender", ""), r.get("subject", "")
+    own = strip_quotes(r.get("body_text", ""))
+    if not g.get("serials"):
+        return None
+    base = {"confidence": 1.0, "serials": g["serials"], "subject": subject,
+            "mail_ids": g["mail_ids"], "answered": True}
+    if _GUARD1_SENDER_RE.search(sender) and _DEACTIVATION_RE.search(f"{subject}\n{own}"):
+        return {**base, "is_request": True, "model": "PM85", "from_os": "8", "to_os": "9",
+                "rule": "guard1",
+                "reason": "Guard1 deactivation 요청 — PM85 8→9(White85OtoP_1)로 등록하는 건(규칙)"}
+    if _addresses(sender) & _FORWARDERS and len(own) <= _FORWARD_MAX_CHARS \
+            and _FORWARD_ASK_RE.search(own):
+        return {**base, "is_request": True, "model": "", "from_os": "", "to_os": "",
+                "rule": "forward",
+                "reason": f"서원상 부장님 전달(등록 부탁 · FYI) — 메일 안에 S/N {len(g['serials'])}건(규칙)"}
+    return None
+
+
 def triage(rows: list[dict], *, force: bool = False, max_threads: int = 60,
            allow_calls: bool | None = None) -> dict:
     """후보 메일을 스레드로 묶어 Claude 로 판정. 캐시된 스레드는 건너뛴다.
@@ -318,6 +356,16 @@ def triage(rows: list[dict], *, force: bool = False, max_threads: int = 60,
     cache = _load_cache()
     # 아직 확정 판정이 없는 스레드 = 캐시에 없거나, 있어도 미응답(answered=False)인 것.
     todo = [g for g in groups if force or not _is_answered(cache.get(_cache_id(g)))]
+    # 규칙으로 정해지는 스레드는 Claude 에 묻지 않는다(rule_verdict).
+    by_rule = {}
+    for g in todo:
+        v = rule_verdict(g)
+        if v:
+            by_rule[_cache_id(g)] = v
+    if by_rule:
+        _save_verdicts(by_rule)
+        cache.update(by_rule)
+        todo = [g for g in todo if _cache_id(g) not in by_rule]
     todo = todo[:max_threads]
     if not todo:
         return {"verdicts": cache, "asked": 0, "cached": len(groups), "error": "",
