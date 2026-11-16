@@ -414,11 +414,25 @@ def _deploy_rounds(product: dict) -> list[dict]:
     except Exception:  # noqa: BLE001  (감지 실패가 목록 전체를 막으면 안 된다)
         return []
 
+    # 제목의 Type 표시('[AOSP]' · '[GMS MR]' · '[Russia]')가 이 SKU 의 Type 과 다르면 남의 회차다.
+    # 실측 2026-11-16: '[PM550][AOSP] 55.70 (Nov 11 2026) RC 배포' 가 등록하지 않은 AOSP 빌드인데
+    # 제품명 · 버전 모양만 맞아 PM550 A7 GMS 의 신규 회차로 올라왔다.
+    my_type = str(product.get("os_type") or "").strip().upper()
+    known_types = {t.upper() for t in P.DEFAULT_TYPES} | {
+        str(x.get("os_type") or "").strip().upper() for x in P.list_products("")} - {""}
+
+    def type_ok(subject: str) -> bool:
+        tags = {t.upper() for t in re.findall(r"\[\s*([A-Za-z]+)(?:\s+[A-Za-z]{2})?\s*\]", subject or "")}
+        hit = tags & known_types
+        return not hit or my_type in hit
+
     by_base: dict[str, list] = {}
     _init = str(product.get("initial_os_version") or "")
     for c in cands:
         # OS 버전 모양이 아니면(SDK · 앱 · 펌웨어 배포 공지) 회차가 아니다.
         if not os_version_like(c.get("version", ""), _init):
+            continue
+        if not fw and not type_ok(c.get("subject", "")):
             continue
         b = _base_ver(c.get("version", ""))
         if b:
@@ -431,8 +445,9 @@ def _deploy_rounds(product: dict) -> list[dict]:
         #   이미지를 배포합니다" 인 Beta(이슈 #33679 대응) 인데, base 가 84.10 이라
         #   'PM84 A13 84.10' 이 신규 회차로 올라왔다. 정식 배포가 아니므로 감지하지 않는다.
         # 나중에 정식 공지가 오면 그때 이 묶음에 들어와 회차로 잡힌다.
-        # FW 는 'RC Release' 처럼 RC 가 버전 밖에 붙어 온다 — 제목의 RC 도 비배포로 본다.
-        if not any(_is_release(c.get("version", "")) and not (fw and c.get("is_rc")) for c in group):
+        # RC 는 버전 밖에 붙어 오기도 한다 — '55.70 (Nov 11 2026) RC 배포', FW '98.05 RC Release'.
+        # 제목의 RC 도 비배포로 본다(2026-11-16, OS 도 같다 — A/B/S/RC 는 비배포 빌드).
+        if not any(_is_release(c.get("version", "")) and not c.get("is_rc") for c in group):
             continue
         official, _note = _official_version(base, group)
         # 원 공지(회신 아님) 중 가장 최근 것을 그 회차의 대표로 삼는다.
