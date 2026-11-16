@@ -433,6 +433,35 @@ def _dummy_dp(os_type: str, osv: int, verclean: str, date: str, dtype: str, role
     )
 
 
+def _existing_os_version(user_id: int, os_type: str, vtext: str) -> int | None:
+    """이 OS_Type 에 같은 판(버전 + 날짜)이 이미 있으면 그 osVersion(여럿이면 최근 번호). 없으면 None.
+
+    OsInfo 표기로 먼저 찾고, 못 찾으면 DownloadPath 파일명('84.09_20260405.PFU')으로 찾는다 —
+    OsInfo 날짜를 잘못 적어 둔 행이 있다(실측 WhiteDQA84 21: '84.09 (May 05 2026)' · 파일 84.09_20260405).
+    FOTA 를 못 읽으면 None(예전처럼 새 번호) — 등록 전에 화면 미리보기에서 보인다.
+    """
+    verclean, date = _clean_ver_for_file(vtext).upper(), _ver_date(vtext)
+    if not (os_type and verclean and date):
+        return None
+    oi, err = fota_system.fetch_osinfo_list(user_id)
+    if err:
+        return None
+    hits = [int(r["os_version"]) for r in oi
+            if r.get("os_type") == os_type and str(r.get("os_version", "")).isdigit()
+            and _clean_ver_for_file(r.get("version", "")).upper() == verclean
+            and _ver_date(r.get("version", "")) == date]
+    if not hits:
+        dp, err = fota_system.fetch_downloadpath_list(user_id)
+        if err:
+            return None
+        key = f"{verclean}_{date}".upper()
+        hits = [int(r["os_version"]) for r in dp
+                if r.get("os_type") == os_type and str(r.get("os_version", "")).isdigit()
+                and str(r.get("filename", "")).upper().startswith(key)
+                and str(r.get("download_type", "")).upper() == "FULL"]
+    return max(hits) if hits else None
+
+
 def build_plan(user_id: int, parsed: Parsed, os_type_override: str = "") -> Plan:
     """파싱 결과 → 등록 Plan(OsInfo/DownloadPath 행 · api · endDate). FOTA 조회 포함.
 
@@ -495,10 +524,31 @@ def build_plan(user_id: int, parsed: Parsed, os_type_override: str = "") -> Plan
     # (OS Update 쪽은 회차 RN 의 Dropbox 링크를 쓴다 — app/pipeline/rn_dropbox.py)
     url = f"https://pointmobile.com/en/products-mobilecomputers/{parsed.product}"
 
+    # From 판이 이 OS_Type 에 **이미 등록돼 있으면 그 번호를 그대로 쓰고 다시 넣지 않는다**(2026-11-16).
+    # 실측: PM84 84.10 테스트에서 84.08(20) · 84.09(21)이 이미 있는데 22 · 23 · 24 로 셋을 새로 넣으려 했다.
+    # 이전 DQA 테스트가 같은 From 을 늘 다시 쓰므로, 번호를 새로 받는 것은 To 와 처음 보는 From 뿐이다.
+    reused: dict[str, int] = {}
+    for r in parsed.froms:
+        hit = _existing_os_version(user_id, os_type, OSP.apply_version_prefix(vpre, r.version))
+        if hit is not None:
+            reused[r.role] = hit
+    if reused:
+        nxt = plan.latest + 1
+        for r in parsed.froms:
+            if r.role in reused:
+                osv[r.role] = reused[r.role]
+            else:
+                osv[r.role], nxt = nxt, nxt + 1
+        osv["to"] = nxt
+        plan.warnings.extend(
+            f"From {OSP.apply_version_prefix(vpre, r.version)} — FOTA 에 이미 있음(osVersion {reused[r.role]}), 다시 넣지 않음"
+            for r in parsed.froms if r.role in reused)
+
     # 각 from/to os_version 별 OsInfo + DownloadPath 행.
     refs: list[tuple[OsRef, int]] = []
     for r in parsed.froms:
-        refs.append((r, osv.get(r.role)))
+        if r.role not in reused:
+            refs.append((r, osv.get(r.role)))
     if parsed.to:
         refs.append((parsed.to, osv.get("to")))
 
