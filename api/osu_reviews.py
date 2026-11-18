@@ -82,13 +82,40 @@ def request(job_id: int, kind: str, user: dict) -> dict:
         "review_request", 요청종류=spec["verb"], 제품=product, 버전=version, 대상=spec["label"],
         요청자=user["username"], 조사=_eul(spec["verb"]),
         안내=f"▶ 앱에 로그인해 해당 작업의 {spec['label']} 결재 화면에서 확인 후 결정을 부탁드립니다." + _web_line())
-    ok, err = user_mailer.send_as_user(user["id"], to, subject.strip(), body)
+    # 요청 시각을 먼저 정한다 — 검수 웹의 결재 열쇠(job-N:kind:시각)가 이것이라 메일 버튼이 그 결재로 바로 간다.
+    requested_at = datetime.now().isoformat()
+    ok, err = user_mailer.send_as_user(user["id"], to, subject.strip(), body,
+                                       html=_request_html(job_id, kind, spec, st, product, version, user, to, requested_at))
     if not ok:
         raise ReviewError(f"요청 메일 발송 실패: {err}")
     update_state(key, **{spec["state_key"]: {
         "status": "requested", "requester_id": user["id"], "requester_email": user_mailer.user_email(user["id"]),
-        "requester_name": user["username"], "requested_at": datetime.now().isoformat(), "admins": to}})
+        "requester_name": user["username"], "requested_at": requested_at, "admins": to}})
     return {"ok": True, "message": f"{spec['role']} {len(to)}명에게 {spec['verb']} 요청을 보냈습니다"}
+
+
+def _request_html(job_id: int, kind: str, spec: dict, st: dict, product: str, version: str,
+                  user: dict, to: list[str], requested_at: str) -> str:
+    """결재 요청 메일의 HTML 판 — PMDM License 승인 요청과 같은 틀(2026-11-18)."""
+    from urllib.parse import quote
+
+    import confirm_sync
+    from app.osu_mail_html import review_request_html
+
+    web = confirm_sync.public_url()
+    if web and confirm_sync.osu_enabled():
+        url = f"{web}/go/job-{job_id}/{kind}/{quote(requested_at, safe=':')}"
+        label = "검수 화면에서 확인하기"
+    else:
+        url = f"{(MT.auto_values().get('앱주소') or '').rstrip('/')}/jobs/{job_id}"
+        label = "앱에서 확인하기"
+    try:
+        docs = [f"{d['label']} — {d['name']}" for d in confirm_sync._docs(st, kind)]
+    except Exception:  # noqa: BLE001  (문서 목록은 곁들임 — 못 읽어도 메일은 나간다)
+        docs = []
+    return review_request_html(kind_label=spec["label"], verb=spec["verb"], josa=_eul(spec["verb"]),
+                               product=product, version=version, requester=user["username"],
+                               role=spec["role"], reviewers=to, docs=docs, url=url, url_label=label)
 
 
 def _web_line() -> str:
