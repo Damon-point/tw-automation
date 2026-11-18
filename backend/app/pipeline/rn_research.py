@@ -2830,9 +2830,18 @@ def run_rn_research(
         issue_ids, text_items = [], []
         source = "최초 출시 — 이전 판이 없어 선별 대상이 없습니다"
 
+    # 빈 RN 허용(작업 상태 rn_allow_empty) — 배포 공지 전에 예외로 시작한 회차는 이슈 목록이 없다.
+    # 그래도 전체 이력에 이번 판 자리를 만들고, 항목은 RN 편집에서 사람이 채운다(2026-11-18 PM84P 15.04).
+    from app.pipeline.state import get_state as _gs_empty
+
+    allow_empty = bool(mail_id is not None and (_gs_empty(mail_id) or {}).get("rn_allow_empty"))
+    if allow_empty and not issue_ids and not text_items and not first_release:
+        progress.step("빈 Release Note — 이번 판 항목 없이 만듭니다(예외 회차)")
+        source = "빈 Release Note(예외 회차) — 항목은 RN 편집에서 채웁니다"
+
     # 최초 출시는 근거 이슈가 없는 게 정상이라 여기서 멈추지 않는다(멈추면 신규 제품은
     # 배포 공지가 오기 전까지 RN 을 아예 못 만든다).
-    if not issue_ids and not text_items and not first_release:
+    if not issue_ids and not text_items and not first_release and not allow_empty:
         return StageOutput(result_text=(
             header + f"버전: {version}" + (f"  (근거: {ver_note})" if ver_note else "")
             + f"\n이슈 근거: {source}\n\n"
@@ -2849,7 +2858,7 @@ def run_rn_research(
         ordered = [issues[i] for i in issue_ids if i in issues]
     # 이슈를 하나도 못 읽었더라도 **번호 없는 항목이 있으면 진행**한다 — 그 항목만으로도
     # 선별표를 만들 수 있고, 여기서 멈추면 그 내용이 통째로 사라진다.
-    if not ordered and not text_items and not first_release:
+    if not ordered and not text_items and not first_release and not (allow_empty and not issue_ids):
         return StageOutput(result_text=(
             header + cap_warn + f"버전 {version}\n근거: {source}\n"
             f"이슈 {len(issue_ids)}건을 Redmine 에서 읽지 못했습니다: {errs[:3]}"
