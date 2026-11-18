@@ -36,7 +36,8 @@ _SUBJ_RE = re.compile(r"request\s+to\s+start\s+the\s+GMS\s+([A-Z]{2})\s+approval
 #: 이름을 잃었다(감지는 됐는데 배포 공지로 폴백해 '86.07' 로 붙었다 —
 #: 사용자 지적 2026-09-21). 'Ver…on' 으로 느슨하게 받는다. 뒤의 지문이 같은지까지
 #: 봐야 한 회차로 묶이므로, 조금 느슨해도 남의 회차를 물어 오지 않는다.
-_BUILD_VER_RE = re.compile(r"Build\s*Ver\w*on\s*[:：]\s*([A-Za-z0-9._\-]+)", re.I)
+#: 2026-11 부터는 'Build Number: PM84PG15.04' 로도 온다(실측 #6852) — 그 줄도 받는다.
+_BUILD_VER_RE = re.compile(r"Build\s*(?:Ver\w*on|Number)\s*[:：]\s*([A-Za-z0-9._\-]+)", re.I)
 
 #: 빌드지문 — fih_mail 과 **같은 문법**을 쓴다(두 벌로 갈라지면 반드시 어긋난다).
 from app.pipeline.fih_mail import _FP_RE  # noqa: E402
