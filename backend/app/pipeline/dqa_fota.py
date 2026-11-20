@@ -274,6 +274,10 @@ def parse_fota_test(subject: str, body: str, serials: list[str] | None = None) -
         _av = _android_from_newformat(p.to.version if p.to else "")
         if not _av and p.froms:
             _av = _android_from_newformat(p.froms[0].version)
+        # 뽑은 버전은 앞의 제품 접두어가 떨어져 나간다('MF52G15.01' → '15.01'). 원문 블록에서 한 번 더 본다
+        # (실측 2026-11-20 #7618 MF52 — Android 를 못 찾아 OS_Type 을 정하지 못했다).
+        if not _av:
+            _av = _android_from_newformat(to_block) or _android_from_newformat(from_block)
         if _av:
             p.android = _av
 

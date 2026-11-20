@@ -68,11 +68,21 @@ def is_serial_like(token: str) -> bool:
     return not _MODEL_IN_TOKEN_RE.search(t)
 
 
-def find_serials(text: str) -> list[str]:
-    """본문·제목에서 일련번호 후보를 순서대로(중복 제거) 뽑는다. 대문자로 정규화."""
+# 'SN26194D0040' 처럼 SN 머리말이 붙어 12자리 한 덩어리로 오는 경우 — 머리말을 떼어 본다.
+# 실측 2026-11-20 #7618(DQA MF52 FOTA Test 협조 요청): S/N 0건으로 목록에 오지 않았다.
+# 제목에 FOTA 가 든 메일에만 쓴다 — 모든 메일에 쓰면 Stress test 보고 · 기능 검증 메일 14통이 새로 걸렸다.
+_GLUED_SN_RE = re.compile(r"(?<![A-Za-z0-9])(SN)(?=[A-Za-z0-9]{10}(?![A-Za-z0-9]))", re.I)
+
+
+def find_serials(text: str, *, glued: bool = False) -> list[str]:
+    """본문·제목에서 일련번호 후보를 순서대로(중복 제거) 뽑는다. 대문자로 정규화.
+
+    glued: 'SN26194D0040' 처럼 머리말이 붙은 것도 떼어 본다(FOTA 메일에서만).
+    """
     out: list[str] = []
     seen: set[str] = set()
-    for m in _TOKEN_RE.finditer(text or ""):
+    src = _GLUED_SN_RE.sub(r"\1 ", text or "") if glued else (text or "")
+    for m in _TOKEN_RE.finditer(src):
         tok = m.group(1)
         if not is_serial_like(tok):
             continue
@@ -199,7 +209,7 @@ def classify(subject: str, body: str, sender: str = "") -> dict:
     """
     text = f"{subject or ''}\n{body or ''}"
     kw = has_keyword(text)
-    serials = find_serials(text)
+    serials = find_serials(text, glued="fota" in (subject or "").lower())
     intent = has_intent(text)
     strong = has_strong_intent(text)
     by_sender = is_excluded_sender(sender)
