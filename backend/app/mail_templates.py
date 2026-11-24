@@ -435,7 +435,7 @@ _add(Tpl(
 _add(Tpl(
     key="mid_review_result", title="RN 승인 결과 회신", group="검수",
     when="중간 검수에서 RN 을 승인·반려했을 때", to="작성자 (참조: 다른 RN 승인자)",
-    subject="Re: [TW Automation] {{제품}} {{버전}} Release Note RN 승인 {{결과}}",
+    subject="Re: [TW Automation] {{제품}} {{버전}} Release Note {{결과}}",
     body=(
         "안녕하세요.\n"
         "\n"

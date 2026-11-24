@@ -78,12 +78,15 @@ def request(job_id: int, kind: str, user: dict) -> dict:
         raise ReviewError(f"{spec['role']} 이메일이 등록돼 있지 않습니다")
     product = st.get("product") or ""
     version = st.get("version_full") or st.get("os_version") or ""
+    # 요청 시각을 먼저 정한다 — 검수 웹의 결재 열쇠(job-N:kind:시각)가 이것이라 메일 링크가 그 결재로 바로 간다.
+    requested_at = datetime.now().isoformat()
+    url, _label = _review_link(job_id, kind, requested_at)
+    # 평문의 링크도 버튼과 같은 곳으로 — 예전엔 '웹 검수' 가 검수 웹 첫 화면, 앱 링크가 앱 첫 화면이었다(2026-11-24).
     subject, body = MT.render(
         "review_request", 요청종류=spec["verb"], 제품=product, 버전=version, 대상=spec["label"],
-        요청자=user["username"], 조사=_eul(spec["verb"]),
-        안내=f"▶ 앱에 로그인해 해당 작업의 {spec['label']} 결재 화면에서 확인 후 결정을 부탁드립니다." + _web_line())
-    # 요청 시각을 먼저 정한다 — 검수 웹의 결재 열쇠(job-N:kind:시각)가 이것이라 메일 버튼이 그 결재로 바로 간다.
-    requested_at = datetime.now().isoformat()
+        요청자=user["username"], 조사=_eul(spec["verb"]), 앱주소=_job_url(job_id),
+        안내=f"▶ 앱에 로그인해 해당 작업의 {spec['label']} 결재 화면에서 확인 후 결정을 부탁드립니다."
+             + (f"\n▶ 웹 검수: {url}" if url != _job_url(job_id) else ""))
     ok, err = user_mailer.send_as_user(user["id"], to, subject.strip(), body,
                                        html=_request_html(job_id, kind, spec, st, product, version, user, to, requested_at))
     if not ok:
@@ -97,18 +100,10 @@ def request(job_id: int, kind: str, user: dict) -> dict:
 def _request_html(job_id: int, kind: str, spec: dict, st: dict, product: str, version: str,
                   user: dict, to: list[str], requested_at: str) -> str:
     """결재 요청 메일의 HTML 판 — PMDM License 승인 요청과 같은 틀(2026-11-18)."""
-    from urllib.parse import quote
-
     import confirm_sync
     from app.osu_mail_html import review_request_html
 
-    web = confirm_sync.public_url()
-    if web and confirm_sync.osu_enabled():
-        url = f"{web}/go/job-{job_id}/{kind}/{quote(requested_at, safe=':')}"
-        label = "검수 화면에서 확인하기"
-    else:
-        url = f"{(MT.auto_values().get('앱주소') or '').rstrip('/')}/jobs/{job_id}"
-        label = "앱에서 확인하기"
+    url, label = _review_link(job_id, kind, requested_at)
     try:
         docs = [f"{d['label']} — {d['name']}" for d in confirm_sync._docs(st, kind)]
     except Exception:  # noqa: BLE001  (문서 목록은 곁들임 — 못 읽어도 메일은 나간다)
@@ -118,9 +113,21 @@ def _request_html(job_id: int, kind: str, spec: dict, st: dict, product: str, ve
                                role=spec["role"], reviewers=to, docs=docs, url=url, url_label=label)
 
 
-def _web_line() -> str:
-    url = (os.getenv("TWN_CONFIRM_PUBLIC_URL") or "").strip().rstrip("/")
-    return f"\n▶ 웹 검수: {url}/" if url else ""
+def _job_url(job_id: int) -> str:
+    """앱의 그 작업 화면 — 메일의 '진행 상황' 링크(앱 첫 화면이 아니라)."""
+    return f"{(MT.auto_values().get('앱주소') or '').rstrip('/')}/jobs/{job_id}"
+
+
+def _review_link(job_id: int, kind: str, requested_at: str) -> tuple[str, str]:
+    """요청 메일의 결재 링크 — 검수 웹에 올리면 그 결재로 바로(/go/job-N/kind/요청시각), 아니면 앱의 작업 화면."""
+    from urllib.parse import quote
+
+    import confirm_sync
+
+    web = confirm_sync.public_url()
+    if web and confirm_sync.osu_enabled():
+        return f"{web}/go/job-{job_id}/{kind}/{quote(requested_at, safe=':')}", "검수 화면에서 확인하기"
+    return _job_url(job_id), "앱에서 확인하기"
 
 
 def can_decide(kind: str, user: dict) -> bool:
@@ -171,6 +178,7 @@ def _decide(job_id: int, kind: str, approve: bool, note: str, user: dict) -> dic
         if req:
             subject, body = MT.render(
                 "mid_review_result", 제품=product, 버전=version, 결과=verdict, 처리자=user["username"],
+                앱주소=_job_url(job_id),
                 메모이름="메모" if approve else "반려 사유", 메모=note or "-",
                 다음안내=("▶ History 관리용 RN(전체 이력본)을 PDF 로 확정하고 파일서버에 저장했습니다."
                       if approve else "▶ 위 사유를 확인해 수정한 뒤 다시 RN 승인을 요청해 주세요."))
@@ -186,7 +194,8 @@ def _decide(job_id: int, kind: str, approve: bool, note: str, user: dict) -> dic
     first = (f"요청하신 {product} {version} {spec['label']} "
              f"{'' if spec['verb'] == verdict else spec['verb'] + ' '}건이 {verdict}되었습니다.").replace("  ", " ")
     subject, body = MT.render("review_result", 요청종류=spec["verb"], 결과=verdict, 제품=product, 버전=version,
-                              대상=spec["label"], 첫줄=first, 처리자=user["username"], 메모=note or "-")
+                              대상=spec["label"], 첫줄=first, 처리자=user["username"], 메모=note or "-",
+                              앱주소=_job_url(job_id))
     ok, err = user_mailer.send_as_user(user["id"], req, subject.strip(), body)
     if not ok:
         raise ReviewError(f"결과 메일 발송 실패: {err}")
