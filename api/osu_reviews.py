@@ -113,6 +113,16 @@ def _request_html(job_id: int, kind: str, spec: dict, st: dict, product: str, ve
                                role=spec["role"], reviewers=to, docs=docs, url=url, url_label=label)
 
 
+def _result_html(job_id: int, spec: dict, approve: bool, product: str, version: str, user: dict,
+                 note: str, next_line: str) -> str:
+    """결재 결과 메일의 HTML 판 — PMDM License 승인 · 반려 메일과 같은 틀(2026-11-25)."""
+    from app.osu_mail_html import review_result_html
+
+    return review_result_html(kind_label=spec["label"], verb=spec["verb"], approved=approve, product=product,
+                              version=version, decider=user["username"], note=note, next_line=next_line,
+                              url=_job_url(job_id))
+
+
 def _job_url(job_id: int) -> str:
     """앱의 그 작업 화면 — 메일의 '진행 상황' 링크(앱 첫 화면이 아니라)."""
     return f"{(MT.auto_values().get('앱주소') or '').rstrip('/')}/jobs/{job_id}"
@@ -182,7 +192,10 @@ def _decide(job_id: int, kind: str, approve: bool, note: str, user: dict) -> dic
                 메모이름="메모" if approve else "반려 사유", 메모=note or "-",
                 다음안내=("▶ History 관리용 RN(전체 이력본)을 PDF 로 확정하고 파일서버에 저장했습니다."
                       if approve else "▶ 위 사유를 확인해 수정한 뒤 다시 RN 승인을 요청해 주세요."))
-            ok, err = user_mailer.send_as_user(user["id"], req, subject.strip(), body, cc=user_mailer.mid_reviewer_emails())
+            html = _result_html(job_id, spec, approve, product, version, user, note,
+                                "History 관리용 RN(전체 이력본)을 PDF 로 확정하고 파일서버에 저장했습니다." if approve else "")
+            ok, err = user_mailer.send_as_user(user["id"], req, subject.strip(), body,
+                                               cc=user_mailer.mid_reviewer_emails(), html=html)
             if not ok:
                 notes.append(f"결정은 저장했지만 알림 메일 발송 실패 — {err}")
         return {"ok": True, "message": f"RN 승인 {verdict}", "notes": notes}
@@ -196,7 +209,11 @@ def _decide(job_id: int, kind: str, approve: bool, note: str, user: dict) -> dic
     subject, body = MT.render("review_result", 요청종류=spec["verb"], 결과=verdict, 제품=product, 버전=version,
                               대상=spec["label"], 첫줄=first, 처리자=user["username"], 메모=note or "-",
                               앱주소=_job_url(job_id))
-    ok, err = user_mailer.send_as_user(user["id"], req, subject.strip(), body)
+    nxt = ("" if not approve else
+           "Submission 뉴스레터 단계를 완료로 표시합니다." if kind == "newsletter" else
+           "RN for Sales 를 PDF 로 확정하고 파일서버에 저장합니다.")
+    ok, err = user_mailer.send_as_user(user["id"], req, subject.strip(), body,
+                                       html=_result_html(job_id, spec, approve, product, version, user, note, nxt))
     if not ok:
         raise ReviewError(f"결과 메일 발송 실패: {err}")
     update_state(key, **{spec["state_key"]: decided})
